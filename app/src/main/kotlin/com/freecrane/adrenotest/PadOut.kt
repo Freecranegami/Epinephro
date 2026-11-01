@@ -158,6 +158,7 @@ class PadOut(private val act: Activity) {
     private var last = FloatArray(8)
     private var downTime = SystemClock.uptimeMillis()
     private var count = 0
+    private var lastEnsure = 0L
 
     private val keys = mapOf(
         "a" to KeyEvent.KEYCODE_BUTTON_A, "b" to KeyEvent.KEYCODE_BUTTON_B, "x" to KeyEvent.KEYCODE_BUTTON_X, "y" to KeyEvent.KEYCODE_BUTTON_Y,
@@ -165,8 +166,9 @@ class PadOut(private val act: Activity) {
         "start" to KeyEvent.KEYCODE_BUTTON_START, "back" to KeyEvent.KEYCODE_BUTTON_SELECT, "guide" to KeyEvent.KEYCODE_BUTTON_MODE)
 
     fun update(pressed: Set<String>, lx: Float, ly: Float, rx: Float, ry: Float, hx: Float, hy: Float) {
-        PadDevice.ensure(HostApp.instance)
         val now = SystemClock.uptimeMillis()
+        // ensure() walks the system's input classes by reflection: once a second is plenty, doing it for every touch sample was costly
+        if (now - lastEnsure > 1000) { lastEnsure = now; PadDevice.ensure(HostApp.instance) }
         for ((id, code) in keys) {
             val down = pressed.contains(id)
             if (down && held.add(code)) key(now, KeyEvent.ACTION_DOWN, code)

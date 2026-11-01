@@ -27,7 +27,6 @@ object Pad {
         El("dpad", "dpad", "", 0.14f, 0.44f, 0.30f),
         El("ls", "stick", "", 0.15f, 0.77f, 0.34f),
         El("back", "small", "BACK", 0.40f, 0.90f, 0.10f),
-        El("guide", "small", "XBOX", 0.50f, 0.90f, 0.10f),
         El("start", "small", "START", 0.60f, 0.90f, 0.10f),
         El("l3", "small", "L3", 0.29f, 0.62f, 0.075f),
         El("r3", "small", "R3", 0.71f, 0.62f, 0.075f),
