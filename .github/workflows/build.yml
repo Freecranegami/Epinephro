@@ -41,15 +41,6 @@ jobs:
         with:
           name: apks
           path: dist/*.apk
-      - name: Publish plain APKs on the Releases page
-        if: github.ref_type != 'tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release delete latest --cleanup-tag --yes || true
-          gh release create latest dist/epinephro.apk dist/guestgame.apk \
-            --target "$GITHUB_SHA" --prerelease \
-            --title "Latest build" --notes "Built from $GITHUB_SHA"
       - name: Publish a versioned release (main app only) when RELEASE names a new tag
         env:
           GH_TOKEN: ${{ github.token }}
