@@ -50,12 +50,12 @@ jobs:
           gh release create latest dist/epinephro.apk dist/guestgame.apk \
             --target "$GITHUB_SHA" --prerelease \
             --title "Latest build" --notes "Built from $GITHUB_SHA"
-      - name: Publish a tagged release (main app only)
-        if: github.ref_type == 'tag'
+      - name: Publish a versioned release (main app only) when RELEASE names a new tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/epinephro.apk \
-            --prerelease --verify-tag \
-            --title "Epinephro Beta 1.0" \
-            --notes "First public beta. Only the main app is attached (no test game APK). Experimental: tested on one Adreno 619 phone running Android 13. See the README for what it does."
+          [ -f RELEASE ] || exit 0
+          tag=$(sed -n 1p RELEASE); title=$(sed -n 2p RELEASE); notes=$(sed -n '3,$p' RELEASE)
+          [ -n "$tag" ] || exit 0
+          if gh release view "$tag" >/dev/null 2>&1; then echo "release $tag already exists"; exit 0; fi
+          gh release create "$tag" dist/epinephro.apk --target "$GITHUB_SHA" --prerelease --title "$title" --notes "$notes"
