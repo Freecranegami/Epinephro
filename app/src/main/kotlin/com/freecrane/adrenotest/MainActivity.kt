@@ -508,7 +508,7 @@ class MainActivity : Activity() {
     private fun chooseRcas(out: TextView) {
         val bar = android.widget.SeekBar(this).apply { max = 100; progress = Tweaks.rcasPercent(this@MainActivity) }
         val label = TextView(this).apply { setPadding(48, 32, 48, 0) }
-        fun show(p: Int) { label.text = "RCAS sharpness: $p %  (${"%.2f".format(Tweaks.rcasStops(p))} stops; 100 % is the sharpest)" }
+        fun show(p: Int) { label.text = "RCAS sharpness: $p %  (${"%.2f".format(Tweaks.rcasStops(p))} stops; 100 % is the sharpest; 0 % skips the sharpening pass, which is faster)" }
         show(bar.progress)
         bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, fromUser: Boolean) { show(p) }

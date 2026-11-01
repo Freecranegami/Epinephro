@@ -231,7 +231,7 @@ typedef struct {
     VkDescriptorSet dsq[MAXI]; VkRenderPass rpm; VkPipeline pipefx; VkShaderModule fvs, ffs;
     /* FSR 1 (mode 2): game image [-> FXAA] -> EASU -> full-size image -> RCAS -> swapchain image */
     VkRect2D rect;                       /* where the picture goes on the screen (smaller than the screen when the ratio is kept) */
-    int mode; float rcas; VkImage uimg[MAXI]; VkDeviceMemory umem[MAXI]; VkImageView uview[MAXI]; VkFramebuffer ufb[MAXI];
+    int mode, norcas; float rcas; VkImage uimg[MAXI]; VkDeviceMemory umem[MAXI]; VkImageView uview[MAXI]; VkFramebuffer ufb[MAXI];
     VkDescriptorSet dsu[MAXI]; VkPipeline pipee; VkShaderModule efs;
     float vinfo[4]; uint32_t easu[16], rcasc[4];      /* push constants, same for every pass of the chain */
     /* frame generation (LSFG): the proxy image is copied into fimg[], the generated frame lands in oimg and is run through
@@ -382,7 +382,7 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
         F.CmdDraw(cb2, 3, 1, 0, 0);
         F.CmdEndRenderPass(cb2);
     }
-    if (c->mode == 2) {                                    /* EASU: game (or FXAA) image -> full-size image */
+    if (c->mode == 2 && !c->norcas) {                      /* EASU: game (or FXAA) image -> full-size image */
         VkRenderPassBeginInfo rbu = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = c->rpm, .framebuffer = c->ufb[slot],
             .renderArea = { { 0, 0 }, c->out }, .clearValueCount = 1, .pClearValues = &black };
         F.CmdBeginRenderPass(cb2, &rbu, VK_SUBPASS_CONTENTS_INLINE);
@@ -401,8 +401,9 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
     F.CmdBeginRenderPass(cb2, &rbi, VK_SUBPASS_CONTENTS_INLINE);
     F.CmdBindPipeline(cb2, VK_PIPELINE_BIND_POINT_GRAPHICS, c->pipe);
     F.CmdBindDescriptorSets(cb2, VK_PIPELINE_BIND_POINT_GRAPHICS, c->pl, 0, 1,
-                            c->mode == 2 ? &c->dsu[slot] : (c->fx ? &c->dsq[slot] : &c->ds[slot]), 0, NULL);
-    if (c->mode == 2) F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, c->rcasc);   /* RCAS: sharpen at full size */
+                            (c->mode == 2 && !c->norcas) ? &c->dsu[slot] : (c->fx ? &c->dsq[slot] : &c->ds[slot]), 0, NULL);
+    if (c->mode == 2 && c->norcas) F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 64, c->easu);   /* EASU straight into the final image */
+    else if (c->mode == 2) F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, c->rcasc);   /* RCAS: sharpen at full size */
     else F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, c->vinfo);
     F.CmdDraw(cb2, 3, 1, 0, 0);
     F.CmdEndRenderPass(cb2);
@@ -470,7 +471,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             vci.image = c->qimg[i];
             ST("create intermediate view", F.CreateImageView(d, &vci, NULL, &c->qview[i]));
         }
-        if (c->mode == 2) {
+        if (c->mode == 2 && !c->norcas) {
             ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
             ici.extent.width = c->out.width; ici.extent.height = c->out.height;
             ST("create upscaled image", F.CreateImage(d, &ici, NULL, &c->uimg[i]));
@@ -547,7 +548,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
                     .pAttachments = &c->qview[i], .width = c->in.width, .height = c->in.height, .layers = 1 };
                 ST("create intermediate framebuffer", F.CreateFramebuffer(d, &fq, NULL, &c->qfb[i]));
             }
-            if (c->mode == 2) {
+            if (c->mode == 2 && !c->norcas) {
                 VkFramebufferCreateInfo fu = { .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, .renderPass = c->rpm, .attachmentCount = 1,
                     .pAttachments = &c->uview[i], .width = c->out.width, .height = c->out.height, .layers = 1 };
                 ST("create upscaled framebuffer", F.CreateFramebuffer(d, &fu, NULL, &c->ufb[i]));
@@ -585,7 +586,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             wds.dstSet = c->dsq[i]; wds.pImageInfo = &dq;
             F.UpdateDescriptorSets(d, 1, &wds, 0, NULL);
         }
-        if (c->mode == 2) {
+        if (c->mode == 2 && !c->norcas) {
             c->dsu[i] = sets[(c->fx ? 2 * n1 : n1) + i];      /* EASU output */
             VkDescriptorImageInfo du = { c->samp, c->uview[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             wds.dstSet = c->dsu[i]; wds.pImageInfo = &du;
@@ -608,8 +609,11 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         ST("create RCAS shader", F.CreateShaderModule(d, &smi, NULL, &c->fs));
         smi.codeSize = sizeof fsr_easu_fs_spv; smi.pCode = fsr_easu_fs_spv;
         ST("create EASU shader", F.CreateShaderModule(d, &smi, NULL, &c->efs));
-        ST("create RCAS pipeline", mk_pipe(c, c->vs, c->fs, c->rp, full, &c->pipe));
-        ST("create EASU pipeline", mk_pipe(c, c->vs, c->efs, c->rpm, c->rect, &c->pipee));
+        if (c->norcas) ST("create EASU pipeline", mk_pipe(c, c->vs, c->efs, c->rp, c->rect, &c->pipe));
+        else {
+            ST("create RCAS pipeline", mk_pipe(c, c->vs, c->fs, c->rp, full, &c->pipe));
+            ST("create EASU pipeline", mk_pipe(c, c->vs, c->efs, c->rpm, c->rect, &c->pipee));
+        }
     } else {
         smi.codeSize = sizeof sgsr_vs_spv; smi.pCode = sgsr_vs_spv;
         ST("create vertex shader", F.CreateShaderModule(d, &smi, NULL, &c->vs));
@@ -751,7 +755,8 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
       c->mode = wantMode; (void)ff;
       c->rcas = (rs && *rs) ? (float)atof(rs) : 0.2f;
       if (c->rcas < 0.0f) c->rcas = 0.0f;
-      if (c->rcas > 2.0f) c->rcas = 2.0f; }
+      if (c->rcas > 2.0f) c->rcas = 2.0f;
+      c->norcas = c->mode == 2 && c->rcas >= 1.999f; }      /* sharpness 0 % = no RCAS pass: EASU draws straight into the final image */
     c->rect = (VkRect2D){ { 0, 0 }, caps.currentExtent };
     { const char *kp = getenv("LAS_KEEP");
       if (kp && *kp == '1') {                                   /* keep the game's ratio: fit it inside the screen, black bars around */
@@ -803,7 +808,7 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
     LOGI("sgsr: picture placed at %d,%d size %ux%u%s", c->rect.offset.x, c->rect.offset.y, c->rect.extent.width, c->rect.extent.height,
          (c->rect.extent.width == c->out.width && c->rect.extent.height == c->out.height) ? " (fills the screen)" : " (ratio kept, black bars)");
     if (c->epi) LOGI("epifx: effects run after the upscale"); else if (wantEpi) LOGI("epifx: not running (see the lines above)");
-    if (c->mode == 2) LOGI("sgsr: RCAS sharpness %.2f stops (0 = sharpest)", c->rcas);
+    if (c->mode == 2) { if (c->norcas) LOGI("sgsr: RCAS off (sharpness 0 %%): EASU draws straight into the final image"); else LOGI("sgsr: RCAS sharpness %.2f stops (0 = sharpest)", c->rcas); }
     return 1;
 }
 
