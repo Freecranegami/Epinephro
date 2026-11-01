@@ -174,7 +174,7 @@ class PadOut(private val act: Activity) {
         }
         val v = floatArrayOf(lx, ly, rx, ry, if (pressed.contains("lt")) 1f else 0f, if (pressed.contains("rt")) 1f else 0f, hx, hy)
         var changed = false
-        for (i in v.indices) if (abs(v[i] - last[i]) > 0.002f) changed = true
+        for (i in v.indices) if (abs(v[i] - last[i]) > 0.01f || (v[i] == 0f && last[i] != 0f)) changed = true
         if (!changed) return
         last = v
         motion(now, v)

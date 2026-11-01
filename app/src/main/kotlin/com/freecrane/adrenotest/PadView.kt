@@ -35,6 +35,14 @@ class PadView(ctx: Context, private val edit: Boolean, private val out: PadOut?)
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; isFakeBoldText = true }
     private val tmp = RectF()
+    private val dirty = RectF()
+    private var dirtyAny = false
+    private fun mark(e: Pad.El) {
+        val r = rad(e) * 1.5f
+        tmp.set(cx(e) - r, cy(e) - r, cx(e) + r, cy(e) + r)
+        if (dirtyAny) dirty.union(tmp) else dirty.set(tmp)
+        dirtyAny = true
+    }
 
     init { isFocusable = false; isFocusableInTouchMode = false }
 
@@ -196,11 +204,13 @@ class PadView(ctx: Context, private val edit: Boolean, private val out: PadOut?)
             }
         }
         push()
-        invalidate()
+        // Redraw only the controls that were touched: a full-screen redraw on every touch sample is costly next to the game.
+        if (dirtyAny) { dirtyAny = false; invalidate(dirty.left.toInt() - 2, dirty.top.toInt() - 2, dirty.right.toInt() + 2, dirty.bottom.toInt() + 2) }
         return true          // the controller covers the whole screen: the game gets no touches while it is on
     }
 
     private fun pressEl(e: Pad.El, px: Float, py: Float, first: Boolean) {
+        mark(e)
         when (e.kind) {
             "stick" -> {
                 val r = rad(e)
@@ -220,6 +230,7 @@ class PadView(ctx: Context, private val edit: Boolean, private val out: PadOut?)
     }
 
     private fun releaseEl(e: Pad.El) {
+        mark(e)
         when (e.kind) {
             "stick" -> { sx[e.id] = 0f; sy[e.id] = 0f }
             "dpad" -> { hatX = 0f; hatY = 0f }

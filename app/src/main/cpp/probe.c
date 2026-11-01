@@ -981,6 +981,11 @@ static inline int pad_is(const void *e) { return (const PadEv *)e >= g_pev && (c
 static int64_t pad_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec; }
 static void pad_push(const PadEv *ev) {
     pthread_mutex_lock(&g_pmu);
+    if (ev->type == AINPUT_EVENT_TYPE_MOTION && g_ptail != g_phead && g_pev[(g_phead - 1) % PAD_N].type == AINPUT_EVENT_TYPE_MOTION) {
+        g_pev[(g_phead - 1) % PAD_N] = *ev;            /* stick values the game hasn't read yet are stale: replace them, no new wake-up */
+        pthread_mutex_unlock(&g_pmu);
+        return;
+    }
     if (g_phead - g_ptail >= PAD_N - 2) g_ptail++;             /* full: drop the oldest */
     g_pev[g_phead % PAD_N] = *ev;
     g_phead++;
