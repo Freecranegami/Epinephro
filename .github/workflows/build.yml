@@ -2,6 +2,7 @@ name: build
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 permissions:
   contents: write
@@ -41,6 +42,7 @@ jobs:
           name: apks
           path: dist/*.apk
       - name: Publish plain APKs on the Releases page
+        if: github.ref_type != 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -48,3 +50,12 @@ jobs:
           gh release create latest dist/epinephro.apk dist/guestgame.apk \
             --target "$GITHUB_SHA" --prerelease \
             --title "Latest build" --notes "Built from $GITHUB_SHA"
+      - name: Publish a tagged release (main app only)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/epinephro.apk \
+            --prerelease --verify-tag \
+            --title "Epinephro Beta 1.0" \
+            --notes "First public beta. Only the main app is attached (no test game APK). Experimental: tested on one Adreno 619 phone running Android 13. See the README for what it does."
