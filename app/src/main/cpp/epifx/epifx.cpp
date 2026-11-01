@@ -785,7 +785,9 @@ bool wire(Fx &x, std::vector<Effect *> &list, std::string &why) {
                         const auto &s = m.samplers[sb.index];
                         int ti = findTex(*e, s.texture_name);
                         VkImageView v = VK_NULL_HANDLE;
-                        bool wantSrgb = s.srgb;
+                        // Only textures loaded from files are decoded as sRGB. The picture and the render targets are not: nothing here
+                        // encodes sRGB on the way out (SRGBWriteEnable is not applied), so decoding on the way in made the result too dark and contrasty.
+                        bool wantSrgb = s.srgb && ti >= 0 && e->tex[ti].hasPix;
                         if (ti >= 0 && e->tex[ti].kind == 1) {
                             if (perSlot) v = x.srcs[si].v;
                             else { Img &im = imgOf(p.colorIn); v = wantSrgb && im.vs ? im.vs : im.v; }
@@ -945,7 +947,7 @@ API void *epifx_create(const char *root, const char *preset, void *gipa, void *i
             for (auto &p : e->passes) if (p.toBack) anyBack = true;
             for (auto &s : e->L.mod.samplers) {
                 int ti = findTex(*e, s.texture_name);
-                if (s.srgb && ti >= 0 && e->tex[ti].kind == 1) needSrgb = true;
+                (void)ti;                          // sRGB reads of the picture are not done (see the sampler setup)
             }
         }
         if (used.empty() || !anyBack) { LOGI("epifx: off, nothing to run"); return nullptr; }
