@@ -490,6 +490,18 @@ long vkshim_res_caps2(long phys, long pinfo, long pcaps, cas_f3 real) {
 
 /* ---------- entry points called from the generated shim ---------- */
 long vkshim_cas_create(long device, long pci, long palloc, long psc, cas_f8 real) {
+    /* An opaque swapchain: with INHERIT or a blended mode the picture's alpha reaches the compositor, and the phone's recents
+     * screenshot of the game then looks see-through. A game never needs its picture blended with what is behind the window. */
+    VkSwapchainCreateInfoKHR opq;
+    if (pci) {
+        opq = *(const VkSwapchainCreateInfoKHR *)pci;
+        if (opq.compositeAlpha != VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) {
+            static int said = 0;
+            if (!said) { said = 1; LOGI("swapchain: composite alpha %d changed to opaque", (int)opq.compositeAlpha); }
+            opq.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+            pci = (long)&opq;
+        }
+    }
     { long sr; if (vkshim_sgsr_create(device, pci, palloc, psc, real, &sr)) return sr; }
     if ((cas_strength() <= 0.0f && !fxaa_on()) || !pci || !psc || !cas_fn_init())
         return real(device, pci, palloc, psc, 0, 0, 0, 0);

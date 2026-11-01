@@ -76,7 +76,7 @@ uniform float video_sizeX <
 	ui_max = BUFFER_WIDTH;
 	ui_label = "Frame Width [CRT-Pi]";
 	ui_tooltip = "This should be sized according to the video data in the texture (If you're using emulators, set this to the Emu video frame size, otherwise, keep it the same as Screen Width/Height or Fullscreen res.)";
-> = 320.0;
+> = BUFFER_WIDTH * 1.0;
 
 uniform float video_sizeY <
 	ui_type = "drag";
@@ -84,7 +84,7 @@ uniform float video_sizeY <
 	ui_max = BUFFER_HEIGHT;
 	ui_label = "Frame Height [CRT-Pi]";
 	ui_tooltip = "This should be sized according to the video data in the texture (If you're using emulators, set this to the Emu video frame size, otherwise, keep it the same as Screen Width/Height or Fullscreen res.)";
-> = 240.0;
+> = BUFFER_HEIGHT * 1.0;
 
 uniform float CURVATURE_X <
 	ui_type = "drag";

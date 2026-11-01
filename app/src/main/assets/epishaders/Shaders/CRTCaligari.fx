@@ -26,14 +26,14 @@ uniform float texture_sizeX <
 	ui_min = 1.0;
 	ui_max = BUFFER_WIDTH;
 	ui_label = "Screen Width [CRTCaligari]";
-> = 320.0;
+> = BUFFER_WIDTH * 1.0;
 
 uniform float texture_sizeY <
 	ui_type = "drag";
 	ui_min = 1.0;
 	ui_max = BUFFER_HEIGHT;
 	ui_label = "Screen Height [CRTCaligari]";
-> = 240.0;
+> = BUFFER_HEIGHT * 1.0;
 
 uniform float SPOT_WIDTH <
 	ui_type = "drag";

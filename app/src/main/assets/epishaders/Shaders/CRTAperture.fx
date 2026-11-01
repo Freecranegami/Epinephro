@@ -10,14 +10,14 @@ uniform float resX <
 	ui_min = 1.0;
 	ui_max = BUFFER_WIDTH;
 	ui_label = "Screen Width [CRT-Aperture]";
-> = 320.0;
+> = BUFFER_WIDTH * 1.0;
 
 uniform float resY <
 	ui_type = "drag";
 	ui_min = 1.0;
 	ui_max = BUFFER_HEIGHT;
 	ui_label = "Screen Height [CRT-Aperture]";
-> = 240.0;
+> = BUFFER_HEIGHT * 1.0;
 
 uniform float video_sizeX <
 	ui_type = "drag";
@@ -25,7 +25,7 @@ uniform float video_sizeX <
 	ui_max = BUFFER_WIDTH;
 	ui_label = "Frame Width [CRT-Aperture]";
 	ui_tooltip = "This should be sized according to the video data in the texture (If you're using emulators, set this to the Emu video frame size, otherwise, keep it the same as Screen Width/Height or Fullscreen res.)";
-> = 320.0;
+> = BUFFER_WIDTH * 1.0;
 
 uniform float video_sizeY <
 	ui_type = "drag";
@@ -33,7 +33,7 @@ uniform float video_sizeY <
 	ui_max = BUFFER_HEIGHT;
 	ui_label = "Frame Height [CRT-Aperture]";
 	ui_tooltip = "This should be sized according to the video data in the texture (If you're using emulators, set this to the Emu video frame size, otherwise, keep it the same as Screen Width/Height or Fullscreen res.)";
-> = 240.0;
+> = BUFFER_HEIGHT * 1.0;
 
 uniform int SHARPNESS_IMAGE <
 	ui_type = "drag";
