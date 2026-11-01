@@ -5,6 +5,8 @@
 
 <div align="center">
 
+<img src="docs/logo.svg" alt="Epinephro logo" width="180">
+
 # Epinephro
 
 **Run Android games on custom Vulkan drivers, with upscalers, shaders and frame generation, no root needed.**

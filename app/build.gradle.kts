@@ -11,8 +11,8 @@ android {
         applicationId = "com.freecrane.adrenotest"
         minSdk = 26
         targetSdk = 28          // low on purpose: keeps native-library loading permissive
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "1.0-beta1"
         ndk { abiFilters += "arm64-v8a" }
     }
 
