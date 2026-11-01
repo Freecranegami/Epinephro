@@ -964,7 +964,7 @@ class MainActivity : Activity() {
     }
 
     private fun pageTitle(p: String): String = when {
-        p == "games" -> "Las Tools"
+        p == "games" -> "Epinephro"
         p == "graphics" -> "Graphics (defaults)"
         p == "framegen" -> "Frame generation (defaults)"
         p == "epi" -> "EpiShaders (defaults)"
@@ -973,7 +973,7 @@ class MainActivity : Activity() {
         p == "tools" -> "Tools"
         p == "diag" -> "Diagnostics"
         p.startsWith("game:") -> GameMeta.name(this, p.removePrefix("game:")) + " settings"
-        else -> "Las Tools"
+        else -> "Epinephro"
     }
 
     private fun showPage(p: String) {
@@ -1139,7 +1139,7 @@ class MainActivity : Activity() {
         outView = out
 
         // top bar
-        titleView = label("Las Tools", 18f, cText, true)
+        titleView = label("Epinephro", 18f, cText, true)
         val burger = label("☰", 26f, cText).apply { setPadding(dp(18), 0, dp(18), 0); gravity = android.view.Gravity.CENTER; isClickable = true; setOnClickListener { openDrawer() } }
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setBackgroundColor(cBar)
@@ -1182,7 +1182,7 @@ class MainActivity : Activity() {
         drawerPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(cBar)
             isClickable = true
-            addView(label("Las Tools", 22f, cText, true).apply { setPadding(dp(24), dp(28), dp(16), dp(4)) })
+            addView(label("Epinephro", 22f, cText, true).apply { setPadding(dp(24), dp(28), dp(16), dp(4)) })
             addView(label("Defaults below apply to every game unless you change them in the game's own settings (press and hold a game).", 12f, cSub).apply { setPadding(dp(24), 0, dp(20), dp(8)) })
             addView(drawerItem("Games", "games"))
             addView(drawerHeader("Default settings"))

@@ -2,11 +2,11 @@
 > The seven asset-pack bypass commits after Build 40 (`0a4c472` to `b66bcd6`) are not in the code, but they are
 > still in git history.
 
-# Handoff: Las Tools / Red Dead Redemption stuck on a black screen
+# Handoff: Epinephro (formerly Las Tools) / Red Dead Redemption stuck on a black screen
 
 ## The goal
 
-Las Tools (GitHub `Freecranegami/Las-Tools`, local clone `/home/claude/las-tools`, branch `main`, Android app labelled "AdrenoTest", package `com.freecrane.adrenotest`) runs Android games in a separate `:guest` process. It loads a custom Turnip Vulkan driver through libadrenotools (no root) so games that need newer Vulkan can run.
+Epinephro, formerly Las Tools (GitHub `Freecranegami/Las-Tools`, local clone `/home/claude/las-tools`, branch `main`, Android app labelled "Epinephro", package `com.freecrane.adrenotest`) runs Android games in a separate `:guest` process. It loads a custom Turnip Vulkan driver through libadrenotools (no root) so games that need newer Vulkan can run.
 
 The user's phone is a POCO on Android 13 (API 33). Its stock Adreno driver exposes only Vulkan 1.1.
 

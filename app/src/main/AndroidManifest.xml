@@ -9,7 +9,7 @@
     <application
         android:name=".HostApp"
         android:appComponentFactory="com.freecrane.adrenotest.GuestFactory"
-        android:label="AdrenoTest"
+        android:label="Epinephro"
         android:extractNativeLibs="true"
         android:largeHeap="true"
         android:hardwareAccelerated="true">
