@@ -1064,7 +1064,15 @@ static int64_t h_ame_time(const AInputEvent *e) { return pad_is(e) ? ((const Pad
 static size_t h_ame_count(const AInputEvent *e) { return pad_is(e) ? 1 : AMotionEvent_getPointerCount(e); }
 static int32_t h_ame_pid(const AInputEvent *e, size_t i) { return pad_is(e) ? 0 : AMotionEvent_getPointerId(e, i); }
 static int32_t h_ame_tool(const AInputEvent *e, size_t i) { return pad_is(e) ? 0 : AMotionEvent_getToolType(e, i); }
-static float h_ame_axis(const AInputEvent *e, int32_t axis, size_t i) { return pad_is(e) ? ((axis >= 0 && axis < 32 && i == 0) ? ((const PadEv *)e)->ax[axis] : 0.0f) : AMotionEvent_getAxisValue(e, axis, i); }
+static float h_ame_axis(const AInputEvent *e, int32_t axis, size_t i) {
+    if (pad_is(e)) return (axis >= 0 && axis < 32 && i == 0) ? ((const PadEv *)e)->ax[axis] : 0.0f;
+    if (i >= AMotionEvent_getPointerCount(e)) {          /* the system aborts on a bad index: answer 0 instead and say so once */
+        static volatile int warned = 0;
+        if (!warned) { warned = 1; GLOG("pad: the game asked axis %d of pointer %d but the event has %d", (int)axis, (int)i, (int)AMotionEvent_getPointerCount(e)); }
+        return 0.0f;
+    }
+    return AMotionEvent_getAxisValue(e, axis, i);
+}
 static float h_ame_press(const AInputEvent *e, size_t i) { return pad_is(e) ? 0.0f : AMotionEvent_getPressure(e, i); }
 static float h_ame_size(const AInputEvent *e, size_t i) { return pad_is(e) ? 0.0f : AMotionEvent_getSize(e, i); }
 static size_t h_ame_hsize(const AInputEvent *e) { return pad_is(e) ? 0 : AMotionEvent_getHistorySize(e); }
@@ -1274,7 +1282,9 @@ static void *h_eglGetProcAddress(const char *n) {
     return real ? real(n) : NULL;
 }
 
+static void *h_dlsym(void *h, const char *n);
 static const struct { const char *name; void *fn; } fh_tab[] = {
+    {"dlsym", h_dlsym},
     {"__system_property_get", h_spg}, {"glGetString", h_glGetString}, {"eglGetProcAddress", h_eglGetProcAddress},
     {"mkdir", h_mkdir}, {"unlink", h_unlink}, {"rmdir", h_rmdir}, {"remove", h_remove}, {"rename", h_rename},
     {"AAssetManager_open", h_aam_open},
@@ -1295,6 +1305,20 @@ static const struct { const char *name; void *fn; } fh_tab[] = {
     {"fopen", h_fopen}, {"opendir", h_opendir}, {NULL, NULL}
 };
 
+
+/* A game may look the input getters up with dlsym instead of linking them; answer with ours so a made-up event never reaches the real ones. */
+static void *h_dlsym(void *h, const char *n) {
+    static void *(*real)(void *, const char *);
+    if (!real) real = (void *(*)(void *, const char *))dlsym(RTLD_DEFAULT, "dlsym");
+    if (n && (!strncmp(n, "AInput", 6) || !strncmp(n, "AKeyEvent_", 10) || !strncmp(n, "AMotionEvent_", 13)))
+        for (int k = 0; fh_tab[k].name; k++)
+            if (!strcmp(fh_tab[k].name, n)) {
+                static volatile int logged = 0;
+                if (!logged) { logged = 1; GLOG("pad: the game looked up %s with dlsym (answered with ours)", n); }
+                return fh_tab[k].fn;
+            }
+    return real ? real(h, n) : NULL;
+}
 
 /* ---------- Build 64: kgsl ioctls of the Turnip driver ----------
  * Turnip reports "device lost" when a kernel call on /dev/kgsl-3d0 fails or the GPU reset status is not clean.
