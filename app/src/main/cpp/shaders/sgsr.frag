@@ -5,10 +5,12 @@
 // Operation mode RGBA (mode 1), edge threshold 8/255, edge sharpness 2; the Vulkan push constant replaces the
 // ViewportInfo uniform: (1/width, 1/height, width, height) of the low-resolution input.
 layout(set = 0, binding = 0) uniform sampler2D ps0;
-layout(push_constant) uniform PC { vec4 ViewportInfo; } pc;
-layout(location = 0) in vec2 uv;
+layout(push_constant) uniform PC { highp vec4 ViewportInfo; } pc;
+layout(location = 0) in highp vec2 uv;
 layout(location = 0) out vec4 out_Target0;
 
+// Half precision (RelaxedPrecision) for the colour maths: Adreno runs it at about twice the ALU rate. Coordinates stay full precision.
+precision mediump float;
 const float EdgeThreshold = 8.0 / 255.0;
 const float EdgeSharpness = 2.0;
 
@@ -29,9 +31,9 @@ void main() {
     color.xyz = textureLod(ps0, uv, 0.0).xyz;
     color.w = 0.0;
 
-    vec2 imgCoord = (uv * pc.ViewportInfo.zw) + vec2(-0.5, 0.5);
-    vec2 imgCoordPixel = floor(imgCoord);
-    vec2 coord = imgCoordPixel * pc.ViewportInfo.xy;
+    highp vec2 imgCoord = (uv * pc.ViewportInfo.zw) + vec2(-0.5, 0.5);
+    highp vec2 imgCoordPixel = floor(imgCoord);
+    highp vec2 coord = imgCoordPixel * pc.ViewportInfo.xy;
     vec2 pl = imgCoord - imgCoordPixel;
     vec4 left = textureGather(ps0, coord, 1);
 
