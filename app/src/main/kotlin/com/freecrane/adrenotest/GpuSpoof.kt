@@ -50,7 +50,7 @@ object GpuSpoof {
     private const val PREFS = "las"
 
     fun deviceIndex(ctx: Context): Int =
-        Prefs.get(ctx).getInt("device_spoof", 1).coerceIn(0, devices.size - 1)
+        Prefs.get(ctx).getInt("device_spoof", 0).coerceIn(0, devices.size - 1)
 
     // sets the phone model and, with it, the matching GPU and CPU
     fun setDevice(ctx: Context, i: Int) {
@@ -60,14 +60,14 @@ object GpuSpoof {
     }
 
     fun index(ctx: Context): Int =
-        Prefs.get(ctx).getInt("gpu_spoof", devices[1].gpuIndex).coerceIn(0, presets.size - 1)
+        Prefs.get(ctx).getInt("gpu_spoof", 0).coerceIn(0, presets.size - 1)
 
     fun set(ctx: Context, i: Int) {
         Prefs.get(ctx).edit().putInt("gpu_spoof", i).commit()
     }
 
     fun cpuIndex(ctx: Context): Int =
-        Prefs.get(ctx).getInt("cpu_spoof", devices[1].cpuIndex).coerceIn(0, cpus.size - 1)
+        Prefs.get(ctx).getInt("cpu_spoof", 0).coerceIn(0, cpus.size - 1)
 
     fun setCpu(ctx: Context, i: Int) {
         Prefs.get(ctx).edit().putInt("cpu_spoof", i).commit()
