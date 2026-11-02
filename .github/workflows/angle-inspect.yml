@@ -13,28 +13,20 @@ jobs:
         run: |
           set +e
           out=angle.txt; : > $out
-          echo "== releases" >> $out
-          gh api "repos/abnormalmaps/build-angle/releases?per_page=6" -q '.[]|.tag_name+" "+.published_at+" :: "+(.assets|map(.name+"("+(.size|tostring)+")")|join(" "))' >> $out 2>&1
-          echo "== repo" >> $out
-          gh api repos/abnormalmaps/build-angle -q '.description+" | license: "+(.license.spdx_id//"none")' >> $out 2>&1
-          tag=$(gh api "repos/abnormalmaps/build-angle/releases?per_page=1" -q '.[0].tag_name')
-          asset=$(gh api "repos/abnormalmaps/build-angle/releases/tags/$tag" -q '.assets[]|select(.name|test("android";"i"))|.name' | head -5)
-          echo "tag $tag; android assets: $asset" >> $out
-          a=$(echo "$asset" | grep -i "arm64" | head -1); [ -n "$a" ] || a=$(echo "$asset" | head -1)
-          if [ -n "$a" ]; then
-            gh release download "$tag" -R abnormalmaps/build-angle -p "$a" -D dl >> $out 2>&1
-            ls -l dl >> $out
-            mkdir x; cd x
-            case "$a" in *.zip) unzip -q ../dl/$a;; *.tar.gz|*.tgz) tar xzf ../dl/$a;; *.tar.xz) tar xJf ../dl/$a;; esac
-            cd ..
-            echo "== files" >> $out; (cd x && find . -type f | sort | head -60 | xargs ls -l) >> $out 2>&1
-            for f in $(find x -name '*.so' | head -6); do
-              echo "== $f" >> $out
-              readelf -d "$f" | grep -E "SONAME|NEEDED" >> $out
-              echo "vulkan strings:" >> $out; strings "$f" | grep -iE "^libvulkan|vulkan\.so|libGLESv2|libEGL" | sort -u | head -8 >> $out
-              echo "exports egl/gl: $(nm -D --defined-only "$f" | grep -cE ' T (egl|gl)')" >> $out
-            done
-            echo "== licence-like" >> $out; (cd x && find . -iname '*licen*' -o -iname '*notice*') >> $out
-          fi
+          tag=angle-bb10246
+          gh release download "$tag" -R abnormalmaps/build-angle -p angle-android-arm64.zip -p commit.txt -D dl >> $out 2>&1
+          echo "commit.txt: $(cat dl/commit.txt)" >> $out
+          mkdir x; cd x; unzip -q ../dl/angle-android-arm64.zip; cd ..
+          f=x/arm64/lib/libGLESv2_angle.so
+          echo "== NEEDED/SONAME GLESv2" >> $out; readelf -d $f | grep -E "SONAME|NEEDED" >> $out
+          echo "== NEEDED GLESv1" >> $out; readelf -d x/arm64/lib/libGLESv1_CM_angle.so | grep -E "SONAME|NEEDED" >> $out
+          echo "== loader strings" >> $out; strings $f | grep -E "^lib[a-zA-Z0-9_+.-]+\.so(\.[0-9])?$" | sort -u | head -30 >> $out
+          echo "== backend hints (counts)" >> $out
+          for k in "vkCreateInstance" "VK_KHR_android_surface" "VK_EXT_transform_feedback" "eglGetPlatformDisplay" "libvulkan" "angle_feature" "GL_ANGLE_" "OpenGL ES 3.2" "ANGLE (" "SwiftShader"; do echo "$k: $(strings $f | grep -c "$k")" >> $out; done
+          echo "== version-ish" >> $out; strings $f | grep -iE "^[0-9a-f]{40}$|angle.*commit|git.*hash|chromium/|^ANGLE " | sort -u | head -6 >> $out
+          echo "== EGL exports" >> $out; nm -D --defined-only x/arm64/lib/libEGL_angle.so | grep -E ' T (eglGetProcAddress|eglGetDisplay|eglGetPlatformDisplay|eglCreateContext|eglSwapBuffers|eglInitialize)' | awk '{print $3}' | tr '\n' ' ' >> $out
+          echo >> $out
+          echo "GLESv2 exports: $(nm -D --defined-only $f | grep -cE ' T gl')  ; sample: $(nm -D --defined-only $f | grep -E ' T (glGetString|glDrawElements|glTexImage2D|eglGetProcAddress)' | awk '{print $3}' | tr '\n' ' ')" >> $out
+          echo "EGL needs which GLES: $(strings x/arm64/lib/libEGL_angle.so | grep -E 'GLES|angle' | sort -u | tr '\n' ' ')" >> $out
           msg=$(head -c 9000 $out); msg="${msg//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"
           echo "::notice title=angle-inspect::$msg"
