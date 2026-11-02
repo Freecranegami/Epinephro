@@ -92,6 +92,11 @@ object GuestPm {
             }
         }
 
+        private fun activityInfo(name: String): android.content.pm.ActivityInfo? = try {
+            val pi = pm.getPackageArchiveInfo(g.apk.path, PackageManager.GET_ACTIVITIES or PackageManager.GET_META_DATA)
+            pi?.activities?.firstOrNull { it.name == name }?.also { it.applicationInfo = g.ai }
+        } catch (t: Throwable) { null }
+
         override fun invoke(proxy: Any, m: Method, args: Array<out Any?>?): Any? {
             val a: Array<out Any?> = args ?: emptyArray()
             val cn = a.firstOrNull { it is ComponentName } as ComponentName?
@@ -105,6 +110,15 @@ object GuestPm {
                 note(m, a, "-> game component, answered here")
                 return if (m.name == "setComponentEnabledSetting") null
                        else PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+            }
+            // Launcher wrappers (fastman92 and similar) read their own activity's meta-data to find the real game activity.
+            // The system only knows our proxy activity, so answer from the game's manifest.
+            if (m.name == "getActivityInfo" && cn != null &&
+                (cn.packageName == g.pkg || cn.className == GuestProxyActivity::class.java.name)) {
+                val target = if (cn.className == GuestProxyActivity::class.java.name)
+                    (GuestRuntime.nativeValue(g.apk.parentFile!!, "activity") ?: cn.className) else cn.className
+                val ai = activityInfo(target)
+                if (ai != null) { note(m, a, "-> $target from the game's APK (meta-data ${ai.metaData?.size() ?: 0})"); return ai }
             }
             if (mine) {
                 when (m.name) {
