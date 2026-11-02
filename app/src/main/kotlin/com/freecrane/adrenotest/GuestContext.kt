@@ -33,6 +33,14 @@ class GuestContext(base: Context, private val g: GuestRuntime.Guest) : ContextWr
         return pm
     }
 
+    // The game's data lives in this app's own folders, so its storage permission checks are answered "granted".
+    private fun storagePerm(p: String?) = p == "android.permission.READ_EXTERNAL_STORAGE" ||
+        p == "android.permission.WRITE_EXTERNAL_STORAGE" || p == "android.permission.MANAGE_EXTERNAL_STORAGE"
+    override fun checkPermission(permission: String, pid: Int, uid: Int): Int =
+        if (storagePerm(permission)) PackageManager.PERMISSION_GRANTED else super.checkPermission(permission, pid, uid)
+    override fun checkSelfPermission(permission: String): Int =
+        if (storagePerm(permission)) PackageManager.PERMISSION_GRANTED else super.checkSelfPermission(permission)
+
     override fun bindService(service: android.content.Intent, conn: android.content.ServiceConnection, flags: Int): Boolean {
         if (GuestPm.blocksPlay(service)) return false
         return super.bindService(service, conn, flags)
@@ -47,6 +55,9 @@ class GuestContext(base: Context, private val g: GuestRuntime.Guest) : ContextWr
     // Some system services identify the caller by the package name of the context they were made
     // for. The game mode service refuses a package that is not installed, so hand out this app's own.
     override fun getSystemService(name: String): Any? {
+        if (name == "notification") {
+            try { HostApp.instance.getSystemService(name)?.let { return it } } catch (t: Throwable) { }
+        }
         if (name == "game") {
             try {
                 val r = HostApp.instance.getSystemService(name)

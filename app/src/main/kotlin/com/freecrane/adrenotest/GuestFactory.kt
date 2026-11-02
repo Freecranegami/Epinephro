@@ -14,13 +14,22 @@ class GuestFactory : AppComponentFactory() {
     override fun instantiateActivity(cl: ClassLoader, className: String, intent: Intent?): Activity {
         if (className == GuestProxyActivity::class.java.name && intent != null) {
             val pkg = intent.getStringExtra(GuestRuntime.EXTRA_PKG)
-            val target = intent.getStringExtra(GuestRuntime.EXTRA_ACTIVITY)
+            var target = intent.getStringExtra(GuestRuntime.EXTRA_ACTIVITY)
             if (pkg != null && target != null) {
                 Log.i("GuestHost", "launch step 1 (real): $pkg -> $target")
                 try {
                     val g = GuestRuntime.prepare(HostApp.instance, pkg)
+                    // The fastman92 launcher only checks storage permissions (which need the game's real package) and then
+                    // starts the original activity: go straight to that one.
+                    if (target!!.startsWith("com.fastman92.main_activity_launcher.")) {
+                        try {
+                            val pi = HostApp.instance.packageManager.getPackageArchiveInfo(g.apk.path, android.content.pm.PackageManager.GET_ACTIVITIES)
+                            val orig = pi?.activities?.firstOrNull { !it.name.startsWith("com.fastman92.") }?.name
+                            if (orig != null) { Log.i("GuestHost", "skipping the launcher $target -> $orig"); target = orig }
+                        } catch (t: Throwable) { Log.w("GuestHost", "launcher skip failed: $t") }
+                    }
                     GuestAtm.install(g)
-                    val act = g.loader.loadClass(target).getDeclaredConstructor().newInstance() as Activity
+                    val act = g.loader.loadClass(target!!).getDeclaredConstructor().newInstance() as Activity
                     describe(act)
                     return act
                 } catch (t: Throwable) {
