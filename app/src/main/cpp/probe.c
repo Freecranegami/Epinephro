@@ -1367,6 +1367,10 @@ static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
      * native code share one EGL. ANGLE's own eglGetProcAddress (taken from the game's import slot) resolves the functions. */
     const char *le = getenv("LAS_ANGLE");
     int is_rt = le && le[0] == '1' && g_real_egpa && strstr(info->dlpi_name, "libandroid_runtime.so") != NULL;
+    if (le && le[0] == '1' && strstr(info->dlpi_name, "libandroid_runtime.so")) {
+        static volatile int seen = 0;
+        if (seen < 3 && (g_real_egpa || seen == 0)) { seen++; GLOG("angle: framework library %s seen, ANGLE eglGetProcAddress %s", info->dlpi_name, g_real_egpa ? "known" : "not known yet"); }
+    }
     if (!is_rt && !is_rdr && !is_drv && (!strstr(info->dlpi_name, "/guests/") || strstr(info->dlpi_name, "vkshim"))) return 0;
     const struct { const char *name; void *fn; } *tab = is_drv ? fh_tab_drv : fh_tab;
     uintptr_t base = info->dlpi_addr;
@@ -1400,9 +1404,13 @@ static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
                 if (strncmp(nm, "egl", 3)) continue;
                 void *np = ((egpa_t)g_real_egpa)(nm);
                 void **slot = (void **)(base + r[i].r_offset);
+                static volatile int nn = 0;
+                if (!np && nn < 8) { nn++; GLOG("angle: ANGLE has no %s", nm); }
                 if (!np || *slot == np) continue;
                 uintptr_t pg = (uintptr_t)slot & ~(uintptr_t)4095;
-                if (mprotect((void *)pg, 4096, PROT_READ | PROT_WRITE) == 0) {
+                int mp = mprotect((void *)pg, 4096, PROT_READ | PROT_WRITE);
+                if (mp != 0) GLOG("angle: could not make the slot of %s writable (errno %d)", nm, errno);
+                if (mp == 0) {
                     *slot = np; (*count)++;
                     static volatile int rl = 0;
                     if (rl < 60) { rl++; GLOG("angle: framework %s -> ANGLE", nm); }

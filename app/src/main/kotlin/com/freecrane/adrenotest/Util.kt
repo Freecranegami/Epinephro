@@ -193,6 +193,10 @@ object Util {
             emptyList()
         }
         val use = if (files.isEmpty()) listOf(File(root, "base.apk")) else files
-        return use.joinToString(":") { it.path }
+        // Games built for old Android bundle empty stubs of the Apache HTTP classes ("Stub!"). The system has the real
+        // library; putting it first makes the game find it before its own stubs.
+        val http = File("/system/framework/org.apache.http.legacy.jar")
+        val all = (if (http.exists()) listOf(http) else emptyList()) + use
+        return all.joinToString(":") { it.path }
     }
 }

@@ -227,7 +227,7 @@ object Importer {
         // A game with its own activity class (a NativeActivity subclass or a plain Activity that loads its
         // libraries itself, like GTA San Andreas) has no lib_name: run its launcher activity as it is.
         if (isNative && activity == null && lib == null) {
-            val base = dexApks.firstOrNull()?.parentFile?.let { File(it, "base.apk") }
+            val base = dexApks.firstOrNull { it.name == "base.apk" } ?: dexApks.firstOrNull { it.parentFile?.let { p -> File(p, "base.apk").exists() } == true }?.let { File(it.parentFile, "base.apk") }
             val la = if (base != null && base.exists()) launcherActivity(base) else null
             if (la != null) activity = la
         }
