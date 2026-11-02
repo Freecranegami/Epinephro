@@ -11,7 +11,7 @@
         android:appComponentFactory="com.freecrane.adrenotest.GuestFactory"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Epinephro"
+        android:label="${appLabel}"
         android:extractNativeLibs="true"
         android:largeHeap="true"
         android:hardwareAccelerated="true">

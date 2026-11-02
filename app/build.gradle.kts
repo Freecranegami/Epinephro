@@ -8,7 +8,9 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.freecrane.adrenotest"
+        // The build the Actions tab gives you keeps the old id (com.freecrane.adrenotest); the release build passes -PappId=com.freecrane.epinephro
+        applicationId = (project.findProperty("appId") as String?) ?: "com.freecrane.adrenotest"
+        manifestPlaceholders["appLabel"] = (project.findProperty("appLabel") as String?) ?: "Epinephro Dev"
         minSdk = 26
         targetSdk = 28          // low on purpose: keeps native-library loading permissive
         versionCode = 4

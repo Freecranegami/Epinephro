@@ -34,7 +34,7 @@ jobs:
       - name: Collect APKs
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/epinephro.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/adrenotest.apk
           cp guestgame/build/outputs/apk/debug/guestgame-debug.apk dist/guestgame.apk
       - name: Backup download (zipped)
         uses: actions/upload-artifact@v4
@@ -45,8 +45,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # RELEASE: line 1 tag, line 2 title, line 3 "new" or "replace" (recreate an existing release), then the notes
           [ -f RELEASE ] || exit 0
-          tag=$(sed -n 1p RELEASE); title=$(sed -n 2p RELEASE); notes=$(sed -n '3,$p' RELEASE)
+          tag=$(sed -n 1p RELEASE); title=$(sed -n 2p RELEASE); mode=$(sed -n 3p RELEASE); notes=$(sed -n '4,$p' RELEASE)
           [ -n "$tag" ] || exit 0
-          if gh release view "$tag" >/dev/null 2>&1; then echo "release $tag already exists"; exit 0; fi
-          gh release create "$tag" dist/epinephro.apk --target "$GITHUB_SHA" --prerelease --title "$title" --notes "$notes"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            if [ "$mode" = "replace" ]; then gh release delete "$tag" --cleanup-tag --yes
+            else echo "release $tag already exists"; exit 0; fi
+          fi
+          # the released app is a separate build with its own package name
+          gradle :app:assembleDebug --no-daemon -PappId=com.freecrane.epinephro -PappLabel=Epinephro
+          cp app/build/outputs/apk/debug/app-debug.apk epinephro.apk
+          gh release create "$tag" epinephro.apk --target "$GITHUB_SHA" --prerelease --title "$title" --notes "$notes"
