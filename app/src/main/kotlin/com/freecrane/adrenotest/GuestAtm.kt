@@ -37,7 +37,7 @@ object GuestAtm {
 
     private class Hook(private val orig: Any, private val g: GuestRuntime.Guest) : InvocationHandler {
         override fun invoke(proxy: Any, m: Method, args: Array<out Any?>?): Any? {
-            val a: Array<Any?> = (args ?: emptyArray()).copyOf()
+            val a: Array<Any?> = Array(args?.size ?: 0) { args!![it] }
             if (m.name == "startActivity" || m.name == "startActivityAsUser") {
                 for (i in a.indices) {
                     val it = a[i] as? Intent ?: continue
