@@ -19,6 +19,7 @@ class GuestFactory : AppComponentFactory() {
                 Log.i("GuestHost", "launch step 1 (real): $pkg -> $target")
                 try {
                     val g = GuestRuntime.prepare(HostApp.instance, pkg)
+                    GuestAtm.install(g)
                     val act = g.loader.loadClass(target).getDeclaredConstructor().newInstance() as Activity
                     describe(act)
                     return act
