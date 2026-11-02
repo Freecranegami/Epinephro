@@ -1362,7 +1362,12 @@ static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
     int is_rdr = strstr(info->dlpi_name, "librdr.so") != NULL;
     int is_drv = strstr(info->dlpi_name, "/files/driver/") != NULL || strstr(info->dlpi_name, "/files/drivers/") != NULL;      /* the custom Vulkan driver */
     if (is_drv && g_light) return 0;                 /* light mode: no ioctl watching */
-    if (!is_rdr && !is_drv && (!strstr(info->dlpi_name, "/guests/") || strstr(info->dlpi_name, "vkshim"))) return 0;
+    /* ANGLE: a game that sets up OpenGL ES in Java (EGL10/EGL14, e.g. GTA San Andreas) goes through the framework's
+     * libandroid_runtime.so into the system libEGL. Point that library's EGL imports at ANGLE's, so Java and the game's
+     * native code share one EGL. ANGLE's own eglGetProcAddress (taken from the game's import slot) resolves the functions. */
+    const char *le = getenv("LAS_ANGLE");
+    int is_rt = le && le[0] == '1' && g_real_egpa && strstr(info->dlpi_name, "libandroid_runtime.so") != NULL;
+    if (!is_rt && !is_rdr && !is_drv && (!strstr(info->dlpi_name, "/guests/") || strstr(info->dlpi_name, "vkshim"))) return 0;
     const struct { const char *name; void *fn; } *tab = is_drv ? fh_tab_drv : fh_tab;
     uintptr_t base = info->dlpi_addr;
     if (is_rdr) g_rdr_base = base;
@@ -1391,6 +1396,19 @@ static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
             uint32_t type = ELF64_R_TYPE(r[i].r_info), sym = ELF64_R_SYM(r[i].r_info);
             if (!sym || (type != R_AARCH64_JUMP_SLOT && type != R_AARCH64_GLOB_DAT)) continue;
             const char *nm = (const char *)strtab + ((const ElfW(Sym) *)symtab)[sym].st_name;
+            if (is_rt) {
+                if (strncmp(nm, "egl", 3)) continue;
+                void *np = ((egpa_t)g_real_egpa)(nm);
+                void **slot = (void **)(base + r[i].r_offset);
+                if (!np || *slot == np) continue;
+                uintptr_t pg = (uintptr_t)slot & ~(uintptr_t)4095;
+                if (mprotect((void *)pg, 4096, PROT_READ | PROT_WRITE) == 0) {
+                    *slot = np; (*count)++;
+                    static volatile int rl = 0;
+                    if (rl < 60) { rl++; GLOG("angle: framework %s -> ANGLE", nm); }
+                }
+                continue;
+            }
             for (int k = 0; tab[k].name; k++) {
                 if (strcmp(nm, tab[k].name)) continue;
                 void **slot = (void **)(base + r[i].r_offset);
