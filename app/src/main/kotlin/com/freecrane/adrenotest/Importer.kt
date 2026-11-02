@@ -224,7 +224,45 @@ object Importer {
                 if (dexMentionsNativeActivity(f)) { isNative = true; break }
             }
         }
+        // A game with its own activity class (a NativeActivity subclass or a plain Activity that loads its
+        // libraries itself, like GTA San Andreas) has no lib_name: run its launcher activity as it is.
+        if (isNative && activity == null && lib == null) {
+            val base = dexApks.firstOrNull()?.parentFile?.let { File(it, "base.apk") }
+            val la = if (base != null && base.exists()) launcherActivity(base) else null
+            if (la != null) activity = la
+        }
         return NativeInfo(isNative, lib, func, activity)
+    }
+
+    // The activity with the MAIN/LAUNCHER intent filter, read from the APK's binary manifest.
+    private fun launcherActivity(apk: File): String? {
+        try {
+            val am = android.content.res.AssetManager::class.java.getDeclaredConstructor().newInstance()
+            val cookie = android.content.res.AssetManager::class.java.getMethod("addAssetPath", String::class.java).invoke(am, apk.path) as Int
+            val p = am.openXmlResourceParser(cookie, "AndroidManifest.xml")
+            val ns = "http://schemas.android.com/apk/res/android"
+            var pkg = ""; var cur: String? = null; var main = false; var launcher = false
+            var ev = p.eventType
+            while (ev != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (ev == org.xmlpull.v1.XmlPullParser.START_TAG) {
+                    when (p.name) {
+                        "manifest" -> pkg = p.getAttributeValue(null, "package") ?: ""
+                        "activity" -> cur = p.getAttributeValue(ns, "name")
+                        "activity-alias" -> cur = p.getAttributeValue(ns, "targetActivity")
+                        "intent-filter" -> { main = false; launcher = false }
+                        "action" -> if (p.getAttributeValue(ns, "name") == "android.intent.action.MAIN") main = true
+                        "category" -> if (p.getAttributeValue(ns, "name") == "android.intent.category.LAUNCHER") launcher = true
+                    }
+                } else if (ev == org.xmlpull.v1.XmlPullParser.END_TAG && p.name == "intent-filter" && cur != null && main && launcher) {
+                    val n = cur
+                    return if (n.startsWith(".")) pkg + n else if (!n.contains(".")) "$pkg.$n" else n
+                }
+                ev = p.next()
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("GuestHost", "launcher activity lookup failed: $t")
+        }
+        return null
     }
 
     private fun writeNativeInfo(dir: File, info: NativeInfo) {

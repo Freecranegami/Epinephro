@@ -38,7 +38,7 @@ object GuestRuntime {
     var current: Guest? = null
         private set
 
-    private fun nativeValue(root: File, key: String): String? {
+    fun nativeValue(root: File, key: String): String? {
         val f = File(root, "native.txt")
         if (!f.exists()) return null
         val v = f.readLines().firstOrNull { it.startsWith("$key=") }?.substring(key.length + 1)?.trim()

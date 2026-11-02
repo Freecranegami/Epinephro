@@ -275,6 +275,10 @@ class MainActivity : Activity() {
             return
         }
         if (adapter == "native") {
+            // games imported before launcher detection existed: look again once
+            if (GuestRuntime.nativeValue(dir, "activity") == null && GuestRuntime.nativeValue(dir, "lib") == null) {
+                try { Importer.reanalyze(this, pkg) } catch (e: Throwable) { }
+            }
             val real = GuestRuntime.nativeActivity(dir)
             if (real == null || Build.VERSION.SDK_INT < 29) {
                 startLegacyNative(pkg)
