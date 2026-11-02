@@ -1,0 +1,36 @@
+name: angle-inspect
+# One-off: downloads the prebuilt ANGLE Android libraries and prints what is in them (as annotations on the run).
+on:
+  push:
+    paths: ['.github/workflows/angle-inspect.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look at the Maven repo and the arm64 libraries
+        run: |
+          set +e
+          out=angle.txt; : > $out
+          base=https://celestiamobile.github.io/angle-android
+          for u in "$base/" "$base/space/celestia/angle-android/maven-metadata.xml"; do
+            echo "== $u" >> $out; curl -sS -m 30 -w "\nHTTP %{http_code}\n" "$u" | head -c 1500 >> $out; echo >> $out
+          done
+          ver=$(curl -sS -m 30 "$base/space/celestia/angle-android/maven-metadata.xml" | sed -n 's:.*<release>\(.*\)</release>.*:\1:p' | head -1)
+          [ -n "$ver" ] || ver=$(curl -sS -m 30 "$base/space/celestia/angle-android/maven-metadata.xml" | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | tail -1)
+          echo "version: $ver" >> $out
+          if [ -n "$ver" ]; then
+            curl -sS -m 120 -L -o a.aar "$base/space/celestia/angle-android/$ver/angle-android-$ver.aar" -w "aar HTTP %{http_code}\n" >> $out
+            mkdir x && cd x && unzip -q ../a.aar && cd ..
+            echo "== aar files" >> $out; (cd x && find . -type f | sort | xargs ls -l) >> $out 2>&1
+            for f in x/jni/arm64-v8a/*.so; do
+              echo "== $f" >> $out
+              readelf -d "$f" | grep -E "SONAME|NEEDED" >> $out
+              echo "vulkan strings:" >> $out; strings "$f" | grep -iE "^libvulkan|vulkan\.so|libandroid\.so|libGLESv2|libEGL|libnativewindow" | sort -u | head -12 >> $out
+              echo "exports (egl/gl count): $(nm -D --defined-only "$f" | grep -cE ' T (egl|gl)')" >> $out
+              echo "sample: $(nm -D --defined-only "$f" | grep -E ' T (eglGetProcAddress|eglGetDisplay|glGetString|eglCreateContext|eglGetPlatformDisplay)' | tr '\n' ' ')" >> $out
+            done
+            echo "== licence-like files" >> $out; (cd x && find . -iname '*licen*' -o -iname '*notice*' -o -iname 'readme*') >> $out
+            strings x/jni/arm64-v8a/libGLESv2*.so | grep -iE "ANGLE \(|angle_commit|chromium/[0-9]+|git hash|commit hash" | sort -u | head -8 >> $out
+          fi
+          msg=$(head -c 9000 $out); msg="${msg//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"
+          echo "::notice title=angle-inspect::$msg"
