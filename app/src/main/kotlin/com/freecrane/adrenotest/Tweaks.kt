@@ -13,6 +13,10 @@ object Tweaks {
     fun light(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("light_mode", false)
     fun setLight(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("light_mode", on).commit() }
 
+    // OpenGL ES games through ANGLE (OpenGL ES translated to Vulkan, running on our Vulkan layer and custom driver).
+    fun angle(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("angle", false)
+    fun setAngle(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("angle", on).commit() }
+
     // FXAA: anti-aliasing of the picture the game presents (before the upscale when SGSR is used).
     fun fxaa(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("fxaa", false)
     fun setFxaa(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("fxaa", on).commit() }
@@ -85,8 +89,12 @@ object Tweaks {
             Os.setenv("LAS_KEEP", if (stretch(ctx)) "0" else "1", true)
             Os.setenv("LAS_RCAS", rcasStops(rcasPercent(ctx)).toString(), true)
             Os.setenv("LAS_CAS", "0", true)
+            if (angle(ctx)) {
+                Os.setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", true)
+                Os.setenv("LAS_ANGLE", "1", true)
+            } else Os.setenv("LAS_ANGLE", "0", true)
             Epi.apply(ctx)
-            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; FXAA ${if (fxaa(ctx)) "on" else "off"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && Lsfg.installed(ctx)) "on" else "off"} (${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
+            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; FXAA ${if (fxaa(ctx)) "on" else "off"}; ANGLE ${if (angle(ctx)) "on" else "off"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && Lsfg.installed(ctx)) "on" else "off"} (${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
         } catch (t: Throwable) {
             Log.w("GuestHost", "tweaks failed: $t")
         }

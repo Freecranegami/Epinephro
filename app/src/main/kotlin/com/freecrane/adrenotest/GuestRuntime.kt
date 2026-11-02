@@ -78,6 +78,7 @@ object GuestRuntime {
         GpuSpoof.apply(app)
         Tweaks.apply(app)
         Log.i(TAG, "launch step 2 (real): custom driver")
+        Log.i(TAG, Util.syncAngle(app, root, Tweaks.angle(app)))
         Util.ensureShim(app, libDir)
         val p = Util.paths(app, true)
         val status = Native.openCustom(p[0], p[1], p[2], p[3])

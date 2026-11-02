@@ -1267,8 +1267,11 @@ static int h_spg(const char *name, char *value) {
     return r;
 }
 typedef const unsigned char *(*glgs_t)(unsigned);
+/* The real functions, taken from the game's own import slots before they are overwritten. With ANGLE on, these are ANGLE's
+ * (the system's libGLESv2/libEGL are not the ones the game is linked to); dlsym(RTLD_DEFAULT) would find the system's. */
+static void *g_real_glgs, *g_real_egpa;
 static const unsigned char *h_glGetString(unsigned name) {
-    static glgs_t real;
+    glgs_t real = (glgs_t)g_real_glgs;
     if (!real) real = (glgs_t)dlsym(RTLD_DEFAULT, "glGetString");
     const unsigned char *r = real ? real(name) : NULL;
     const char *sp = name == 0x1F01 ? getenv("LAS_GL_RENDERER") : name == 0x1F00 ? getenv("LAS_GL_VENDOR") : NULL;
@@ -1281,7 +1284,7 @@ static const unsigned char *h_glGetString(unsigned name) {
 }
 typedef void *(*egpa_t)(const char *);
 static void *h_eglGetProcAddress(const char *n) {
-    static egpa_t real;
+    egpa_t real = (egpa_t)g_real_egpa;
     if (!real) real = (egpa_t)dlsym(RTLD_DEFAULT, "eglGetProcAddress");
     if (n && !strcmp(n, "glGetString")) return (void *)h_glGetString;
     return real ? real(n) : NULL;
@@ -1393,6 +1396,10 @@ static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
                 void **slot = (void **)(base + r[i].r_offset);
                 uintptr_t pg = (uintptr_t)slot & ~(uintptr_t)4095;
                 if (*slot == tab[k].fn) continue;
+                if (*slot && !is_drv) {
+                    if (!g_real_glgs && !strcmp(nm, "glGetString")) { g_real_glgs = *slot; GLOG("file hooks: real glGetString taken from %s", info->dlpi_name); }
+                    else if (!g_real_egpa && !strcmp(nm, "eglGetProcAddress")) { g_real_egpa = *slot; GLOG("file hooks: real eglGetProcAddress taken from %s", info->dlpi_name); }
+                }
                 if (mprotect((void *)pg, 4096, PROT_READ | PROT_WRITE) == 0) { *slot = tab[k].fn; (*count)++; if (is_drv) GLOG("file hooks: ioctl hooked in the driver (%s)", info->dlpi_name); }
             }
         }

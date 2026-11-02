@@ -74,6 +74,7 @@ class GuestActivity : Activity() {
 
         // 1. Shim next to the game's libraries, then open the custom driver.
         Log.i(logTag, "launch step 1")
+        Log.i(logTag, Util.syncAngle(app, root, Tweaks.angle(app)))
         Util.ensureShim(app, libDir)
         val p = Util.paths(app, true)
         val status = Native.openCustom(p[0], p[1], p[2], p[3])

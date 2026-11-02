@@ -59,6 +59,7 @@ class GuestNativeActivity : NativeActivity() {
         if (!apk.exists()) throw IllegalStateException("game not imported: $pkg")
 
         Log.i(logTag, "launch step 2 (native): custom driver")
+        Log.i(logTag, Util.syncAngle(app, root, Tweaks.angle(app)))
         Util.ensureShim(app, libDir)
         val p = Util.paths(app, true)
         val status = Native.openCustom(p[0], p[1], p[2], p[3])

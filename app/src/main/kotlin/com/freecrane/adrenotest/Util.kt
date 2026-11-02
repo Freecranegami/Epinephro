@@ -40,12 +40,23 @@ object Util {
         }
     }
 
-    // Streams input to output, renaming every "libvulkan.so" into "libvkshim.so"
-    // (same length). Returns how many were renamed.
-    fun copyPatched(input: InputStream, output: OutputStream): Int {
-        val from = "libvulkan.so".toByteArray()
-        val to = "libvkshim.so".toByteArray()
-        val n = from.size
+    // Names rewritten inside a game's libraries. Every pair has the same length, so the files keep their layout.
+    //   libvulkan.so -> libvkshim.so     always: the game's Vulkan goes through the app's layer (custom driver, upscalers, effects)
+    //   GL libraries -> ANGLE copies     only for games with "OpenGL through ANGLE" switched on
+    private val VK_PAIRS = listOf("libvulkan.so" to "libvkshim.so")
+    private val ANGLE_PAIRS = listOf(
+        "libGLESv1_CM.so" to "libANGLEv1CM.so",
+        "libGLESv2.so" to "libANGLE2.so",
+        "libGLESv3.so" to "libANGLE2.so",
+        "libEGL.so" to "libANG.so")
+
+    fun pairs(angle: Boolean): List<Pair<ByteArray, ByteArray>> =
+        (VK_PAIRS + (if (angle) ANGLE_PAIRS else emptyList())).map { it.first.toByteArray(Charsets.ISO_8859_1) to it.second.toByteArray(Charsets.ISO_8859_1) }
+            .onEach { require(it.first.size == it.second.size) { "name lengths differ" } }
+
+    // Streams input to output, replacing every name of `pairs`. Returns how many were replaced.
+    fun copyPatched(input: InputStream, output: OutputStream, pairs: List<Pair<ByteArray, ByteArray>> = pairs(false)): Int {
+        val longest = pairs.maxOf { it.first.size }
         val buf = ByteArray(1 shl 20)
         var filled = 0
         var count = 0
@@ -57,22 +68,20 @@ object Util {
                 filled += r
             }
             var i = 0
-            while (i <= filled - n) {
-                if (buf[i] == from[0]) {
-                    var match = true
-                    for (j in 1 until n) {
-                        if (buf[i + j] != from[j]) { match = false; break }
-                    }
-                    if (match) {
-                        System.arraycopy(to, 0, buf, i, n)
-                        count++
-                        i += n
-                        continue
+            while (i < filled) {
+                var hit = false
+                if (buf[i] == 'l'.code.toByte()) {
+                    for ((from, to) in pairs) {
+                        val n = from.size
+                        if (i + n > filled) continue
+                        var match = true
+                        for (j in 1 until n) { if (buf[i + j] != from[j]) { match = false; break } }
+                        if (match) { System.arraycopy(to, 0, buf, i, n); count++; i += n; hit = true; break }
                     }
                 }
-                i++
+                if (!hit) i++
             }
-            val keep = if (eof) 0 else minOf(n - 1, filled)
+            val keep = if (eof) 0 else minOf(longest - 1, filled)
             output.write(buf, 0, filled - keep)
             System.arraycopy(buf, filled - keep, buf, 0, keep)
             filled = keep
@@ -95,6 +104,68 @@ object Util {
                 .copyTo(target, overwrite = true)
             marker.writeText(stamp)
         }
+    }
+
+    private val ANGLE_LIBS = listOf("libANG.so", "libANGLE2.so", "libANGLEv1CM.so")
+
+    // Makes a game's lib folder match the "OpenGL via ANGLE" choice. With ANGLE on, the game's libraries are
+    // unpacked again from its stored APKs with the GL/EGL names renamed to our ANGLE copies, and those copies are
+    // placed next to them. Does nothing when the folder already matches (marker file angle.state in the game folder).
+    // Returns a short description for the log.
+    fun syncAngle(ctx: Context, root: File, angle: Boolean): String {
+        val libDir = File(root, "lib")
+        val state = File(root, "angle.state")
+        val want = if (angle) "on" else "off"
+        val have = if (state.exists()) state.readText().trim() else "off"
+        val stamp = ctx.packageManager.getPackageInfo(ctx.packageName, 0).lastUpdateTime.toString()
+        if (have == want + ":" + stamp || (!angle && have == "off")) {
+            if (angle) for (n in ANGLE_LIBS) if (!File(libDir, n).exists()) { /* fall through to a refresh */ return refreshAngle(ctx, root, libDir, state, stamp) }
+            return "ANGLE $want (unchanged)"
+        }
+        if (!angle) {
+            val n = extractLibs(root, libDir, false)
+            state.writeText("off")
+            return "ANGLE off: $n libraries restored"
+        }
+        return refreshAngle(ctx, root, libDir, state, stamp)
+    }
+
+    private fun refreshAngle(ctx: Context, root: File, libDir: File, state: File, stamp: String): String {
+        val n = extractLibs(root, libDir, true)
+        val native = File(ctx.applicationInfo.nativeLibraryDir)
+        for (name in ANGLE_LIBS) {
+            val s = File(native, name)
+            if (!s.exists()) throw IllegalStateException("ANGLE library missing from the app: $name")
+            s.copyTo(File(libDir, name), overwrite = true)
+        }
+        ensureShim(ctx, libDir)
+        state.writeText("on:$stamp")
+        return "ANGLE on: $n libraries rewritten, ${ANGLE_LIBS.size} ANGLE libraries placed"
+    }
+
+    // Unpacks arm64 libraries from base.apk and splits/*.apk into libDir with the names rewritten.
+    private fun extractLibs(root: File, libDir: File, angle: Boolean): Int {
+        libDir.mkdirs()
+        val pr = pairs(angle)
+        val apks = listOf(File(root, "base.apk")) + (File(root, "splits").listFiles { f -> f.name.endsWith(".apk") }?.sortedBy { it.name } ?: emptyList())
+        var n = 0
+        for (apk in apks) {
+            if (!apk.exists()) continue
+            java.util.zip.ZipFile(apk).use { zip ->
+                val en = zip.entries()
+                while (en.hasMoreElements()) {
+                    val e = en.nextElement()
+                    val p = e.name.split("/")
+                    if (p.size == 3 && p[0] == "lib" && p[1] == "arm64-v8a" && e.name.endsWith(".so")) {
+                        val t = File(libDir, p[2])
+                        t.delete()
+                        zip.getInputStream(e).use { i -> t.outputStream().use { o -> copyPatched(i, o, pr) } }
+                        n++
+                    }
+                }
+            }
+        }
+        return n
     }
 
     // Stops the game process so its files can be replaced safely.

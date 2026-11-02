@@ -31,6 +31,7 @@ Because the app sits between the game and the GPU, it can also do things the gam
 | 🔍 | **Upscalers**: render the game at a lower resolution and scale it up with **SGSR 1** or **FSR 1** |
 | 🎨 | **EpiShaders**: ReShade-style effects (sharpening, anti-aliasing, colour, bloom, CRT and more) on top of any game |
 | ⏩ | **Frame generation**: an in-between frame for every real frame (needs your own copy of `Lossless.dll`) |
+| 🔺 | **OpenGL ES via ANGLE** (experimental): run OpenGL ES games by translating them to Vulkan, through our layer and your custom driver |
 | 🎮 | **Virtual Xbox 360 controller**: on-screen sticks and buttons with a layout editor |
 | 🛠️ | **Compatibility tools**: GPU and device spoofing, file redirects, asset-pack handling, per-game settings, logs |
 
@@ -51,6 +52,10 @@ Imported games are not installed as separate apps. The importer unpacks the game
 ### Custom Vulkan drivers
 
 `libvkshim.so` forwards the game's Vulkan calls to the real loader, and libadrenotools makes that loader open the driver you picked instead of the system one. Drivers can be imported and chosen per game. If something goes wrong, there is a switch back to the bundled driver.
+
+### OpenGL ES via ANGLE (experimental)
+
+Games that use OpenGL ES never touch Vulkan, so none of the above would apply. With the per-game **OpenGL ES via ANGLE** switch on, the game's GL/EGL libraries are renamed to a bundled copy of [ANGLE](https://chromium.googlesource.com/angle/angle), which translates OpenGL ES to Vulkan and is itself pointed at our Vulkan layer. The game then runs on the custom driver, and upscalers and shaders can work on it. The first start after switching rewrites the game's libraries from its stored APKs. Prebuilt ANGLE binaries come from [abnormalmaps/build-angle](https://github.com/abnormalmaps/build-angle).
 
 ### Resolution and upscalers
 
@@ -118,6 +123,7 @@ flowchart LR
 This project stands on other people's work. Each file keeps its own licence header.
 
 **Driver loading**
+- [ANGLE](https://chromium.googlesource.com/angle/angle) by The ANGLE Project authors / Google (BSD-3-Clause), prebuilt by [abnormalmaps](https://github.com/abnormalmaps/build-angle)
 - [libadrenotools](https://github.com/bylaws/libadrenotools) by bylaws (loads custom Vulkan drivers without root)
 - [Mesa / Turnip](https://docs.mesa3d.org/drivers/freedreno.html) and the freedreno developers (the open-source Adreno Vulkan driver)
 

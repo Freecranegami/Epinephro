@@ -849,6 +849,8 @@ class MainActivity : Activity() {
         val drv = try { Drivers.list(this).firstOrNull { it.id == Drivers.selectedId(this) }?.label } catch (t: Throwable) { null }
         action(b, "Vulkan driver", drv ?: "Bundled") { chooseDriver(outView) }
         toggle(b, "Focus guard", "Keeps the game running when the notification shade opens", { FocusGuard.enabled(this) }) { toggleFocusGuard(outView) }
+        toggle(b, "OpenGL ES via ANGLE", "For games that use OpenGL ES instead of Vulkan: translates it to Vulkan so it runs on the custom driver and the layer. Experimental. The first start afterwards rewrites the game's libraries.",
+            { Tweaks.angle(this) }) { Tweaks.setAngle(this, !Tweaks.angle(this)); refreshPage() }
         toggle(b, "Light mode", "No diagnostics, best performance", { Tweaks.light(this) }) { toggleLight(outView) }
     }
 
