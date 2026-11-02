@@ -20,6 +20,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
+      - name: Fetch ANGLE (OpenGL ES on Vulkan)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/angle_fetch.py 2>&1 | tee angle.log || echo "::warning::ANGLE was not bundled"
+          for f in app/src/main/jniLibs/arm64-v8a/*.so; do
+            echo "== $f"; readelf -d "$f" | grep -E "SONAME|NEEDED"
+            echo "env strings: $(strings "$f" | grep -E 'ANGLE_[A-Z_]+' | sort -u | tr '\n' ' ')"
+          done 2>&1 | tee -a angle.log
+          msg=$(head -c 6000 angle.log); msg="${msg//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"
+          echo "::notice title=angle::$msg"
       - name: Build
         run: |
           set -o pipefail

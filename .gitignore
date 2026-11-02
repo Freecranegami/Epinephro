@@ -2,3 +2,7 @@ build/
 .gradle/
 local.properties
 *.iml
+
+# prepared by tools/angle_fetch.py in CI
+app/src/main/jniLibs/
+build/angle-work/
