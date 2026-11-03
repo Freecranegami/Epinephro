@@ -50,7 +50,32 @@ object GuestLog {
 
     private fun isImportant(l: String): Boolean = important.any { l.contains(it) }
 
-    fun read(ctx: Context): String {
+    // Why Android says the game process ended (needs Android 11+): tells a crash from a memory kill or a system kill,
+    // which leave nothing in the normal log. Also the phone's RAM.
+    private fun exitInfo(ctx: Context): String {
+        val sb = StringBuilder("--- how the game process ended (Android's own record) ---\n")
+        try {
+            val mem = java.io.File("/proc/meminfo").readLines().filter { it.startsWith("MemTotal") || it.startsWith("MemAvailable") }
+            sb.append("device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE}, ${mem.joinToString(", ") { it.replace(Regex("\\s+"), " ") }}\n")
+        } catch (t: Throwable) { }
+        try {
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val list = am.getHistoricalProcessExitReasons(null, 0, 12).filter { it.processName.endsWith(":guest") }.take(3)
+            if (list.isEmpty()) sb.append("(no record)\n")
+            val reasons = mapOf(1 to "EXIT_SELF", 2 to "SIGNALED", 3 to "LOW_MEMORY", 4 to "CRASH", 5 to "CRASH_NATIVE", 6 to "ANR",
+                7 to "INITIALIZATION_FAILURE", 8 to "PERMISSION_CHANGE", 9 to "EXCESSIVE_RESOURCE_USAGE", 10 to "USER_REQUESTED",
+                11 to "USER_STOPPED", 12 to "DEPENDENCY_DIED", 13 to "OTHER", 14 to "FREEZER", 15 to "PACKAGE_STATE_CHANGE", 16 to "PACKAGE_UPDATED")
+            for (e in list) {
+                val t = java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(e.timestamp))
+                sb.append("$t pid ${e.pid}: ${reasons[e.reason] ?: e.reason.toString()}, status ${e.status}, importance ${e.importance}, rss ${e.rss / 1024} MB; ${e.description ?: ""}\n")
+            }
+        } catch (t: Throwable) { sb.append("(not available: $t)\n") }
+        return sb.toString()
+    }
+
+    fun read(ctx: Context): String = readLog(ctx) + "\n" + exitInfo(ctx)
+
+    private fun readLog(ctx: Context): String {
         val saved = GuestLogFile.file(ctx)
         val fromFile = try {
             if (saved.exists() && saved.length() > 0) saved.readText() else null
