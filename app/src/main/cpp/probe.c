@@ -1355,6 +1355,51 @@ static int h_ioctl(int fd, int req, ...) {
 }
 static const struct { const char *name; void *fn; } fh_tab_drv[] = { {"ioctl", h_ioctl}, {NULL, NULL} };
 
+/* ---------- ANGLE: logging wrappers for the framework's key EGL calls (the rest are redirected straight to ANGLE) ---------- */
+typedef void *(*vp_t)();
+static vp_t ang_fn(const char *n) { return g_real_egpa ? (vp_t)((egpa_t)g_real_egpa)(n) : NULL; }
+static int ang_err(void) { static int (*ge)(void); if (!ge) ge = (int (*)(void))ang_fn("eglGetError"); return ge ? ge() : -1; }
+#define ANG_LOGN(tag, n, ...) do { static volatile int c = 0; if (c < (n)) { c++; GLOG(__VA_ARGS__); } } while (0)
+static unsigned w_eglInitialize(void *d, int *mj, int *mn) {
+    static unsigned (*f)(void *, int *, int *); if (!f) f = (unsigned (*)(void *, int *, int *))ang_fn("eglInitialize");
+    unsigned r = f ? f(d, mj, mn) : 0; int e = r ? 0 : ang_err();
+    ANG_LOGN(a, 6, "angle: eglInitialize -> %u (EGL %d.%d) err 0x%x", r, mj ? *mj : -1, mn ? *mn : -1, e); return r;
+}
+static unsigned w_eglChooseConfig(void *d, const int *at, void **cf, int sz, int *num) {
+    static unsigned (*f)(void *, const int *, void **, int, int *); if (!f) f = (unsigned (*)(void *, const int *, void **, int, int *))ang_fn("eglChooseConfig");
+    unsigned r = f ? f(d, at, cf, sz, num) : 0; int e = r ? 0 : ang_err();
+    ANG_LOGN(a, 8, "angle: eglChooseConfig -> %u (%d configs) err 0x%x", r, num ? *num : -1, e); return r;
+}
+static void *w_eglCreateContext(void *d, void *cf, void *sh, const int *at) {
+    static void *(*f)(void *, void *, void *, const int *); if (!f) f = (void *(*)(void *, void *, void *, const int *))ang_fn("eglCreateContext");
+    void *r = f ? f(d, cf, sh, at) : NULL; int e = r ? 0 : ang_err();
+    ANG_LOGN(a, 8, "angle: eglCreateContext -> %p err 0x%x", r, e); return r;
+}
+static void *w_eglCreateWindowSurface(void *d, void *cf, void *win, const int *at) {
+    static void *(*f)(void *, void *, void *, const int *); if (!f) f = (void *(*)(void *, void *, void *, const int *))ang_fn("eglCreateWindowSurface");
+    void *r = f ? f(d, cf, win, at) : NULL; int e = r ? 0 : ang_err();
+    ANG_LOGN(a, 8, "angle: eglCreateWindowSurface -> %p err 0x%x", r, e); return r;
+}
+static unsigned w_eglMakeCurrent(void *d, void *dr, void *rd, void *cx) {
+    static unsigned (*f)(void *, void *, void *, void *); if (!f) f = (unsigned (*)(void *, void *, void *, void *))ang_fn("eglMakeCurrent");
+    unsigned r = f ? f(d, dr, rd, cx) : 0; int e = r ? 0 : ang_err();
+    ANG_LOGN(a, 12, "angle: eglMakeCurrent(ctx %p) -> %u err 0x%x", cx, r, e); return r;
+}
+static unsigned w_eglSwapBuffers(void *d, void *sf) {
+    static unsigned (*f)(void *, void *); if (!f) f = (unsigned (*)(void *, void *))ang_fn("eglSwapBuffers");
+    unsigned r = f ? f(d, sf) : 0; int e = r ? 0 : ang_err();
+    ANG_LOGN(a, 5, "angle: eglSwapBuffers -> %u err 0x%x", r, e); return r;
+}
+static void *ang_wrapper(const char *n) {
+    if (!strcmp(n, "eglInitialize")) return (void *)w_eglInitialize;
+    if (!strcmp(n, "eglChooseConfig")) return (void *)w_eglChooseConfig;
+    if (!strcmp(n, "eglCreateContext")) return (void *)w_eglCreateContext;
+    if (!strcmp(n, "eglCreateWindowSurface")) return (void *)w_eglCreateWindowSurface;
+    if (!strcmp(n, "eglMakeCurrent")) return (void *)w_eglMakeCurrent;
+    if (!strcmp(n, "eglSwapBuffers")) return (void *)w_eglSwapBuffers;
+    return NULL;
+}
+
 static uintptr_t g_rdr_base;
 static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
     (void)sz;
@@ -1403,6 +1448,7 @@ static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
             if (is_rt) {
                 if (strncmp(nm, "egl", 3)) continue;
                 void *np = ((egpa_t)g_real_egpa)(nm);
+                { void *wp = np ? ang_wrapper(nm) : NULL; if (wp) np = wp; }
                 void **slot = (void **)(base + r[i].r_offset);
                 static volatile int nn = 0;
                 if (!np && nn < 8) { nn++; GLOG("angle: ANGLE has no %s", nm); }
