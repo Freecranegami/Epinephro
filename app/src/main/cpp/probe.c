@@ -1199,6 +1199,8 @@ static const char *fh_redirect(const char *p, char *buf, size_t n, int create) {
             if (access(alt, F_OK) == 0) { snprintf(buf, n, "%s", alt); return buf; }
             snprintf(alt, sizeof alt, "%s/obb/%s%s", g_ext, g_pkg, q + pl);
             if (access(alt, F_OK) == 0) { snprintf(buf, n, "%s", alt); return buf; }
+            snprintf(alt, sizeof alt, "%s/../obb/%s%s", g_ext, g_pkg, q + pl);
+            if (access(alt, F_OK) == 0) { snprintf(buf, n, "%s", alt); return buf; }
         }
         if (create) fh_mkdirs(buf);
         return buf;
