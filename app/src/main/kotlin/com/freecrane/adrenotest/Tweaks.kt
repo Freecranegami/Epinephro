@@ -24,8 +24,29 @@ object Tweaks {
     fun sustained(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("sustained", true)
     fun setSustained(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("sustained", on).commit() }
 
-    // Called for the game's window in the game process.
+    // Ignore the notch / camera cut-out: the game's window is drawn into the cut-out area too (the whole screen).
+    fun ignoreNotch(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("ignore_notch", false)
+    fun setIgnoreNotch(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("ignore_notch", on).commit() }
+
+    // Called for the game's window in the game process (when it is created, and again when it resumes).
     fun applyWindow(a: android.app.Activity) {
+        try {
+            if (ignoreNotch(a) && android.os.Build.VERSION.SDK_INT >= 28) {
+                val w = a.window
+                val mode = if (android.os.Build.VERSION.SDK_INT >= 30) android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                           else android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                val lp = w.attributes
+                if (lp.layoutInDisplayCutoutMode != mode) {
+                    lp.layoutInDisplayCutoutMode = mode
+                    w.attributes = lp
+                    Log.i("GuestHost", "display: the game's window is drawn under the notch")
+                }
+            }
+        } catch (t: Throwable) { Log.w("GuestHost", "display: ignoring the notch failed: $t") }
+        applySustained(a)
+    }
+
+    private fun applySustained(a: android.app.Activity) {
         try {
             if (!sustained(a)) return
             val pm = a.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
@@ -119,7 +140,7 @@ object Tweaks {
             } else Os.setenv("LAS_PCACHE", "0", true)
             Os.setenv("LAS_PRIO", if (sustained(ctx)) "1" else "0", true)
             Epi.apply(ctx)
-            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; FXAA ${if (fxaa(ctx)) "on" else "off"}; ANGLE ${if (angle(ctx)) "on" else "off"}; pipeline cache ${if (pcache(ctx)) "on" else "off"}; sustained performance ${if (sustained(ctx)) "on" else "off"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && Lsfg.installed(ctx)) "on" else "off"} (${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
+            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; FXAA ${if (fxaa(ctx)) "on" else "off"}; ANGLE ${if (angle(ctx)) "on" else "off"}; pipeline cache ${if (pcache(ctx)) "on" else "off"}; sustained performance ${if (sustained(ctx)) "on" else "off"}; notch ${if (ignoreNotch(ctx)) "ignored" else "kept"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && Lsfg.installed(ctx)) "on" else "off"} (${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
         } catch (t: Throwable) {
             Log.w("GuestHost", "tweaks failed: $t")
         }
