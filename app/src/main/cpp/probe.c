@@ -1360,29 +1360,75 @@ typedef void *(*vp_t)();
 static vp_t ang_fn(const char *n) { return g_real_egpa ? (vp_t)((egpa_t)g_real_egpa)(n) : NULL; }
 static int ang_err(void) { static int (*ge)(void); if (!ge) ge = (int (*)(void))ang_fn("eglGetError"); return ge ? ge() : -1; }
 #define ANG_LOGN(tag, n, ...) do { static volatile int c = 0; if (c < (n)) { c++; GLOG(__VA_ARGS__); } } while (0)
+#include <time.h>
+#include <dirent.h>
+/* Watchdog: when one of these calls has not returned after 3 s, list what every thread is doing (state, kernel wait, syscall). */
+static const char *volatile g_in_name;
+static volatile long g_in_t0;
+static long w_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L; }
+static void *w_watch(void *a) {
+    (void)a; long last = 0;
+    for (;;) {
+        usleep(500000);
+        const char *n = g_in_name; long t0 = g_in_t0;
+        if (!n || t0 == last || w_now() - t0 < 3000) continue;
+        last = t0;
+        GLOG("angle-watch: %s has not returned for %ld ms; threads:", n, w_now() - t0);
+        DIR *d = opendir("/proc/self/task"); struct dirent *e; int shown = 0;
+        while (d && (e = readdir(d)) && shown < 45) {
+            if (e->d_name[0] == '.') continue;
+            char p[96], comm[40] = "", st[8] = "?", wch[48] = "", sc[64] = "";
+            snprintf(p, sizeof p, "/proc/self/task/%s/comm", e->d_name);
+            FILE *f = fopen(p, "r"); if (f) { if (fgets(comm, sizeof comm, f)) comm[strcspn(comm, "\n")] = 0; fclose(f); }
+            snprintf(p, sizeof p, "/proc/self/task/%s/stat", e->d_name);
+            f = fopen(p, "r"); if (f) { char b[400]; if (fgets(b, sizeof b, f)) { char *r = strrchr(b, ')'); if (r && r[1] == ' ') { st[0] = r[2]; st[1] = 0; } } fclose(f); }
+            snprintf(p, sizeof p, "/proc/self/task/%s/wchan", e->d_name);
+            f = fopen(p, "r"); if (f) { if (fgets(wch, sizeof wch, f)) wch[strcspn(wch, "\n")] = 0; fclose(f); }
+            snprintf(p, sizeof p, "/proc/self/task/%s/syscall", e->d_name);
+            f = fopen(p, "r"); if (f) { if (fgets(sc, sizeof sc, f)) sc[strcspn(sc, "\n")] = 0; fclose(f); }
+            GLOG("angle-watch: tid=%s %s state=%s wchan=%s syscall=%.40s", e->d_name, comm, st, wch, sc);
+            shown++;
+        }
+        if (d) closedir(d);
+    }
+    return NULL;
+}
+#define W_ENTER(nm) do { static volatile int st_; if (!st_) { st_ = 1; pthread_t t_; if (pthread_create(&t_, NULL, w_watch, NULL) == 0) pthread_detach(t_); } \
+    ANG_LOGN(c, 6, "angle: %s called", nm); g_in_t0 = w_now(); g_in_name = nm; } while (0)
+#define W_LEAVE() (g_in_name = NULL)
 static unsigned w_eglInitialize(void *d, int *mj, int *mn) {
     static unsigned (*f)(void *, int *, int *); if (!f) f = (unsigned (*)(void *, int *, int *))ang_fn("eglInitialize");
-    unsigned r = f ? f(d, mj, mn) : 0; int e = r ? 0 : ang_err();
+    W_ENTER("eglInitialize");
+    unsigned r = f ? f(d, mj, mn) : 0;
+    W_LEAVE(); int e = r ? 0 : ang_err();
     ANG_LOGN(a, 6, "angle: eglInitialize -> %u (EGL %d.%d) err 0x%x", r, mj ? *mj : -1, mn ? *mn : -1, e); return r;
 }
 static unsigned w_eglChooseConfig(void *d, const int *at, void **cf, int sz, int *num) {
     static unsigned (*f)(void *, const int *, void **, int, int *); if (!f) f = (unsigned (*)(void *, const int *, void **, int, int *))ang_fn("eglChooseConfig");
-    unsigned r = f ? f(d, at, cf, sz, num) : 0; int e = r ? 0 : ang_err();
+    W_ENTER("eglChooseConfig");
+    unsigned r = f ? f(d, at, cf, sz, num) : 0;
+    W_LEAVE(); int e = r ? 0 : ang_err();
     ANG_LOGN(a, 8, "angle: eglChooseConfig -> %u (%d configs) err 0x%x", r, num ? *num : -1, e); return r;
 }
 static void *w_eglCreateContext(void *d, void *cf, void *sh, const int *at) {
     static void *(*f)(void *, void *, void *, const int *); if (!f) f = (void *(*)(void *, void *, void *, const int *))ang_fn("eglCreateContext");
-    void *r = f ? f(d, cf, sh, at) : NULL; int e = r ? 0 : ang_err();
+    W_ENTER("eglCreateContext");
+    void *r = f ? f(d, cf, sh, at) : NULL;
+    W_LEAVE(); int e = r ? 0 : ang_err();
     ANG_LOGN(a, 8, "angle: eglCreateContext -> %p err 0x%x", r, e); return r;
 }
 static void *w_eglCreateWindowSurface(void *d, void *cf, void *win, const int *at) {
     static void *(*f)(void *, void *, void *, const int *); if (!f) f = (void *(*)(void *, void *, void *, const int *))ang_fn("eglCreateWindowSurface");
-    void *r = f ? f(d, cf, win, at) : NULL; int e = r ? 0 : ang_err();
+    W_ENTER("eglCreateWindowSurface");
+    void *r = f ? f(d, cf, win, at) : NULL;
+    W_LEAVE(); int e = r ? 0 : ang_err();
     ANG_LOGN(a, 8, "angle: eglCreateWindowSurface -> %p err 0x%x", r, e); return r;
 }
 static unsigned w_eglMakeCurrent(void *d, void *dr, void *rd, void *cx) {
     static unsigned (*f)(void *, void *, void *, void *); if (!f) f = (unsigned (*)(void *, void *, void *, void *))ang_fn("eglMakeCurrent");
-    unsigned r = f ? f(d, dr, rd, cx) : 0; int e = r ? 0 : ang_err();
+    W_ENTER("eglMakeCurrent");
+    unsigned r = f ? f(d, dr, rd, cx) : 0;
+    W_LEAVE(); int e = r ? 0 : ang_err();
     ANG_LOGN(a, 12, "angle: eglMakeCurrent(ctx %p) -> %u err 0x%x", cx, r, e); return r;
 }
 static unsigned w_eglSwapBuffers(void *d, void *sf) {
