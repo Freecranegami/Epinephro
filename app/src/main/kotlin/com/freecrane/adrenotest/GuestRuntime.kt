@@ -104,6 +104,13 @@ object GuestRuntime {
         try { GuestAssetPacks.extractAll(root) }
         catch (t: Throwable) { Log.w(TAG, "unpacking packs failed: $t") }
         GuestAssetPacks.prewarm(loader, root)
+        try {
+            fun ls(d: File, depth: Int): String = (d.listFiles()?.sortedBy { it.name } ?: emptyList()).joinToString(", ") {
+                if (it.isDirectory) it.name + "/[" + (if (depth > 0) ls(it, depth - 1) else "...") + "]" else it.name + " " + it.length() / 1048576 + " MB"
+            }.ifEmpty { "empty" }
+            Log.i(TAG, "obb folder (imported): " + ls(File(root, "obb"), 2))
+            Log.i(TAG, "obb folder (ext/obb): " + ls(File(root, "ext/obb"), 2))
+        } catch (t: Throwable) { Log.w(TAG, "obb listing failed: $t") }
         try { Native.installFileHooks(pkg, File(root, "ext").path) } catch (t: Throwable) { Log.w(TAG, "file hooks failed: $t") }
         try { Log.i(TAG, Native.installFindClassHook(loader)) }
         catch (t: Throwable) { Log.w(TAG, "FindClass hook failed: $t") }
