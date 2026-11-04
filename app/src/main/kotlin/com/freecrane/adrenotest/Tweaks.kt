@@ -17,6 +17,25 @@ object Tweaks {
     fun angle(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("angle", false)
     fun setAngle(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("angle", on).commit() }
 
+    // Saved pipeline cache (Vulkan shader compilation results kept between sessions) and sustained performance
+    // (the phone's sustained-performance mode, when it has one, plus a little more priority for the render thread).
+    fun pcache(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("pcache", true)
+    fun setPcache(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("pcache", on).commit() }
+    fun sustained(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("sustained", true)
+    fun setSustained(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("sustained", on).commit() }
+
+    // Called for the game's window in the game process.
+    fun applyWindow(a: android.app.Activity) {
+        try {
+            if (!sustained(a)) return
+            val pm = a.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (pm.isSustainedPerformanceModeSupported) {
+                a.window.setSustainedPerformanceMode(true)
+                Log.i("GuestHost", "performance: sustained performance mode on")
+            } else Log.i("GuestHost", "performance: this phone has no sustained performance mode (render thread priority is still raised)")
+        } catch (t: Throwable) { Log.w("GuestHost", "performance: sustained mode failed: $t") }
+    }
+
     // FXAA: anti-aliasing of the picture the game presents (before the upscale when SGSR is used).
     fun fxaa(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("fxaa", false)
     fun setFxaa(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("fxaa", on).commit() }
@@ -93,10 +112,37 @@ object Tweaks {
                 Os.setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", true)
                 Os.setenv("LAS_ANGLE", "1", true)
             } else Os.setenv("LAS_ANGLE", "0", true)
+            val pk = Prefs.scope
+            if (pcache(ctx) && pk != null) {
+                val f = Caches.file(ctx, pk); f.parentFile?.mkdirs()
+                Os.setenv("LAS_PCACHE", "1", true); Os.setenv("LAS_PCACHE_FILE", f.path, true)
+            } else Os.setenv("LAS_PCACHE", "0", true)
+            Os.setenv("LAS_PRIO", if (sustained(ctx)) "1" else "0", true)
             Epi.apply(ctx)
-            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; FXAA ${if (fxaa(ctx)) "on" else "off"}; ANGLE ${if (angle(ctx)) "on" else "off"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && Lsfg.installed(ctx)) "on" else "off"} (${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
+            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; FXAA ${if (fxaa(ctx)) "on" else "off"}; ANGLE ${if (angle(ctx)) "on" else "off"}; pipeline cache ${if (pcache(ctx)) "on" else "off"}; sustained performance ${if (sustained(ctx)) "on" else "off"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && Lsfg.installed(ctx)) "on" else "off"} (${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
         } catch (t: Throwable) {
             Log.w("GuestHost", "tweaks failed: $t")
         }
+    }
+}
+
+// The saved pipeline caches (files/pcache/<game>/<driver>.bin) and the app's temporary files, for the Driver page.
+object Caches {
+    fun root(ctx: Context) = File(ctx.filesDir, "pcache")
+    fun file(ctx: Context, pkg: String): File {
+        val key = Drivers.selectedId(ctx).ifEmpty { "bundled" }.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+        return File(File(root(ctx), pkg), "$key.bin")
+    }
+    private fun size(f: File): Long = if (f.isFile) f.length() else (f.listFiles()?.sumOf { size(it) } ?: 0L)
+    fun gameSize(ctx: Context, pkg: String): Long = size(File(root(ctx), pkg))
+    fun games(ctx: Context): List<String> = root(ctx).listFiles { f -> f.isDirectory }?.map { it.name }?.sorted() ?: emptyList()
+    fun totalSize(ctx: Context): Long = size(root(ctx))
+    fun clear(ctx: Context, pkg: String?) { if (pkg == null) root(ctx).deleteRecursively() else File(root(ctx), pkg).deleteRecursively() }
+    fun tempSize(ctx: Context): Long = size(ctx.cacheDir)
+    fun clearTemp(ctx: Context) { ctx.cacheDir.listFiles()?.forEach { it.deleteRecursively() } }
+    fun fmt(b: Long): String = when {
+        b < 1024 -> "$b B"
+        b < 1024 * 1024 -> "%.0f KB".format(java.util.Locale.US, b / 1024.0)
+        else -> "%.1f MB".format(java.util.Locale.US, b / 1048576.0)
     }
 }

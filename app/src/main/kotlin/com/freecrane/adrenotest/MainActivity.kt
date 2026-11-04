@@ -850,12 +850,52 @@ class MainActivity : Activity() {
         action(b, "GPU spoof", GpuSpoof.presets[GpuSpoof.index(this)].label) { chooseGpu(outView) }
         action(b, "CPU spoof", GpuSpoof.cpus[GpuSpoof.cpuIndex(this)].label) { chooseCpu(outView) }
         action(b, "Device spoof", GpuSpoof.devices[GpuSpoof.deviceIndex(this)].label) { chooseDevice(outView) }
+        toggle(b, "Focus guard", "Keeps the game running when the notification shade opens", { FocusGuard.enabled(this) }) { toggleFocusGuard(outView) }
+        toggle(b, "Light mode", "No diagnostics, best performance", { Tweaks.light(this) }) { toggleLight(outView) }
+    }
+
+    private fun addDriver(b: LinearLayout) {
+        header(b, "Driver")
         val drv = try { Drivers.list(this).firstOrNull { it.id == Drivers.selectedId(this) }?.label } catch (t: Throwable) { null }
         action(b, "Vulkan driver", drv ?: "Bundled") { chooseDriver(outView) }
-        toggle(b, "Focus guard", "Keeps the game running when the notification shade opens", { FocusGuard.enabled(this) }) { toggleFocusGuard(outView) }
         toggle(b, "OpenGL ES via ANGLE", "For games that use OpenGL ES instead of Vulkan: translates it to Vulkan so it runs on the custom driver and the layer. Experimental. The first start afterwards rewrites the game's libraries.",
             { Tweaks.angle(this) }) { Tweaks.setAngle(this, !Tweaks.angle(this)); refreshPage() }
-        toggle(b, "Light mode", "No diagnostics, best performance", { Tweaks.light(this) }) { toggleLight(outView) }
+        header(b, "Performance")
+        toggle(b, "Pipeline cache", "Keeps the shader work the driver has done between sessions, so areas stutter less the second time. Applies the next time the game starts.",
+            { Tweaks.pcache(this) }) { Tweaks.setPcache(this, !Tweaks.pcache(this)); refreshPage() }
+        toggle(b, "Sustained performance", "Asks the phone for steady speed instead of short bursts that then throttle (if it has the mode) and gives the render thread a little more priority. Applies the next time the game starts.",
+            { Tweaks.sustained(this) }) { Tweaks.setSustained(this, !Tweaks.sustained(this)); refreshPage() }
+        addCaches(b)
+    }
+
+    // Cache manager: what the saved pipeline caches take, and a way to delete them.
+    private fun addCaches(b: LinearLayout) {
+        header(b, "Cache")
+        val scope = Prefs.scope
+        if (scope != null) {
+            val n = Caches.gameSize(this, scope)
+            action(b, "Pipeline cache of this game", if (n > 0) Caches.fmt(n) + ". Tap to delete." else "Nothing saved yet") {
+                if (n > 0) Caches.clear(this, scope).also { outView.text = "Pipeline cache deleted."; refreshPage() }
+            }
+        } else {
+            val games = Caches.games(this)
+            action(b, "Pipeline caches", Caches.fmt(Caches.totalSize(this)) + " in total" + if (games.isEmpty()) " (nothing saved yet)" else "") { }
+            for (g in games) {
+                action(b, GameMeta.name(this, g), Caches.fmt(Caches.gameSize(this, g)) + ". Tap to delete.") {
+                    AlertDialog.Builder(this).setTitle("Delete this cache?").setMessage("${GameMeta.name(this, g)} will build its shaders again the next time you play. Nothing else is lost.")
+                        .setPositiveButton("Delete") { _, _ -> Caches.clear(this, g); outView.text = "Pipeline cache deleted."; refreshPage() }
+                        .setNegativeButton("Cancel", null).show()
+                }
+            }
+            if (games.isNotEmpty()) action(b, "Delete all pipeline caches", null) {
+                AlertDialog.Builder(this).setTitle("Delete all pipeline caches?").setMessage("Games will build their shaders again the next time you play. Nothing else is lost.")
+                    .setPositiveButton("Delete") { _, _ -> Caches.clear(this, null); outView.text = "Pipeline caches deleted."; refreshPage() }
+                    .setNegativeButton("Cancel", null).show()
+            }
+            action(b, "Temporary files", Caches.fmt(Caches.tempSize(this)) + ". Tap to delete.") {
+                Caches.clearTemp(this); outView.text = "Temporary files deleted."; refreshPage()
+            }
+        }
     }
 
     // ----- pages -----
@@ -930,6 +970,7 @@ class MainActivity : Activity() {
         addPad(box)
         addFrameGen(box, false)
         addDevice(box)
+        addDriver(box)
         action(box, "Reset this game's settings", "Go back to the defaults") {
             AlertDialog.Builder(this).setTitle("Reset settings?").setMessage("${GameMeta.name(this, pkg)} will follow the default settings again.")
                 .setPositiveButton("Reset") { _, _ ->
@@ -976,6 +1017,7 @@ class MainActivity : Activity() {
         p == "epi" -> "EpiShaders (defaults)"
         p == "pad" -> "Controls (defaults)"
         p == "device" -> "Device (defaults)"
+        p == "driver" -> "Driver (defaults)"
         p == "tools" -> "Tools"
         p == "diag" -> "Diagnostics"
         p.startsWith("game:") -> GameMeta.name(this, p.removePrefix("game:")) + " settings"
@@ -1015,6 +1057,7 @@ class MainActivity : Activity() {
             page == "epi" -> addEpi(box)
             page == "pad" -> addPad(box)
             page == "device" -> addDevice(box)
+            page == "driver" -> addDriver(box)
             page == "tools" -> toolsPage(box)
             page == "diag" -> diagPage(box)
             page.startsWith("game:") -> gameSettingsPage(box, page.removePrefix("game:"))
@@ -1197,6 +1240,7 @@ class MainActivity : Activity() {
             addView(drawerItem("Controls", "pad"))
             addView(drawerItem("Frame generation", "framegen"))
             addView(drawerItem("Device", "device"))
+            addView(drawerItem("Driver", "driver"))
             addView(drawerHeader("More"))
             addView(drawerItem("Tools and logs", "tools"))
             addView(drawerItem("Diagnostics", "diag"))

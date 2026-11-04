@@ -80,6 +80,7 @@ private object GuestSwap : Application.ActivityLifecycleCallbacks {
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         if (activity.javaClass.classLoader is GuestLoader) {
             Log.i("GuestHost", "game activity created: " + activity.javaClass.name)
+            Tweaks.applyWindow(activity)
             GuestInspect.dump(activity, true)
             activity.window.decorView.post {
                 val v = activity.window.decorView
