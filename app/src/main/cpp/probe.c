@@ -1192,6 +1192,14 @@ static const char *fh_redirect(const char *p, char *buf, size_t n, int create) {
         size_t pl = strlen(g_pkg);
         if (strncmp(q, g_pkg, pl) || (q[pl] != '/' && q[pl] != 0)) continue;
         snprintf(buf, n, "%s/%s%s", g_ext, kind, q + pl);
+        if (kind[0] == 'o' && !create && access(buf, F_OK) != 0) {
+            /* OBB files may sit in the game's own obb folder (where the importer puts them), or in ext/obb/<package>/ */
+            char alt[1024];
+            snprintf(alt, sizeof alt, "%s/../obb%s", g_ext, q + pl);
+            if (access(alt, F_OK) == 0) { snprintf(buf, n, "%s", alt); return buf; }
+            snprintf(alt, sizeof alt, "%s/obb/%s%s", g_ext, g_pkg, q + pl);
+            if (access(alt, F_OK) == 0) { snprintf(buf, n, "%s", alt); return buf; }
+        }
         if (create) fh_mkdirs(buf);
         return buf;
     }
