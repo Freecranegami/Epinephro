@@ -70,6 +70,16 @@ object GuestLog {
                 sb.append("$t pid ${e.pid}: ${reasons[e.reason] ?: e.reason.toString()}, status ${e.status}, importance ${e.importance}, rss ${e.rss / 1024} MB; ${e.description ?: ""}\n")
             }
         } catch (t: Throwable) { sb.append("(not available: $t)\n") }
+        // the game's own crash reporter (GTA San Andreas mod loader) writes a backtrace into its data folder
+        try {
+            val now = System.currentTimeMillis()
+            val f = java.io.File(ctx.filesDir, "guests").listFiles()?.map { java.io.File(it, "ext/data/aml_crashlog.txt") }
+                ?.filter { it.exists() && now - it.lastModified() < 15 * 60_000 }?.maxByOrNull { it.lastModified() }
+            if (f != null) {
+                sb.append("--- the game's own crash report (${f.name}) ---\n")
+                sb.append(f.readLines().takeLast(70).joinToString("\n") { it.take(240) }).append("\n")
+            }
+        } catch (t: Throwable) { }
         return sb.toString()
     }
 
