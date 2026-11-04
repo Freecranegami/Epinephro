@@ -137,7 +137,18 @@ object GuestLog {
             "--- diag: scene sizes and GPU timers ($diagImages image sizes not listed) ---\n" +
             diag.joinToString("\n") + "\n" + (if (diagBig.isEmpty()) "" else "--- large images ---\n" + diagBig.joinToString("\n") + "\n") +
             "--- end of diag ---\n"
-        val header = if (start >= 0) "[log since the last game launch, from the $source]"
+        // when that launch happened: an old log is easy to mistake for the new one
+        val launchedAt = try {
+            val m = Regex("^(\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d)").find(lines[start])
+            if (m == null) "" else {
+                val fmt = java.text.SimpleDateFormat("yyyy MM-dd HH:mm:ss", java.util.Locale.US)
+                val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                val t = fmt.parse("$year ${m.groupValues[1]}")!!.time
+                val mins = (System.currentTimeMillis() - t) / 60000
+                " (that launch started at ${m.groupValues[1]}, " + (if (mins < 1) "less than a minute ago" else if (mins < 120) "$mins min ago" else "${mins / 60} h ago") + ")"
+            }
+        } catch (e: Throwable) { "" }
+        val header = if (start >= 0) "[log since the last game launch$launchedAt, from the $source]"
                      else "[no game launch found, showing the recent log, from the $source]"
         val idBlock = "--- device identity: what the game read and what it was told ---\n" +
             (if (identity.isEmpty()) "(nothing logged)\n" else identity.joinToString("\n") + "\n") + "--- end of identity ---\n" + diagBlock

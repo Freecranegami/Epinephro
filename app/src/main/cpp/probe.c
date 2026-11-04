@@ -1447,6 +1447,8 @@ static void *ang_wrapper(const char *n) {
 }
 
 static uintptr_t g_rdr_base;
+/* framework EGL import slots found by fh_patch_cb, patched afterwards by fh_rt_apply */
+static void **g_rt_slot[256]; static const char *g_rt_name[256]; static char g_rt_done[256]; static int g_rt_n;
 static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
     (void)sz;
     if (!info->dlpi_name) return 0;
@@ -1492,21 +1494,14 @@ static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
             if (!sym || (type != R_AARCH64_JUMP_SLOT && type != R_AARCH64_GLOB_DAT)) continue;
             const char *nm = (const char *)strtab + ((const ElfW(Sym) *)symtab)[sym].st_name;
             if (is_rt) {
+                /* Only note the slot here: this callback runs under the dynamic linker's lock, and calling into ANGLE from
+                 * it can deadlock (ANGLE holds its own lock while it loads Vulkan, which needs the linker's lock). The
+                 * patching is done by fh_rt_apply() after dl_iterate_phdr has returned. */
                 if (strncmp(nm, "egl", 3)) continue;
-                void *np = ((egpa_t)g_real_egpa)(nm);
-                { void *wp = np ? ang_wrapper(nm) : NULL; if (wp) np = wp; }
                 void **slot = (void **)(base + r[i].r_offset);
-                static volatile int nn = 0;
-                if (!np && nn < 8) { nn++; GLOG("angle: ANGLE has no %s", nm); }
-                if (!np || *slot == np) continue;
-                uintptr_t pg = (uintptr_t)slot & ~(uintptr_t)4095;
-                int mp = mprotect((void *)pg, 4096, PROT_READ | PROT_WRITE);
-                if (mp != 0) GLOG("angle: could not make the slot of %s writable (errno %d)", nm, errno);
-                if (mp == 0) {
-                    *slot = np; (*count)++;
-                    static volatile int rl = 0;
-                    if (rl < 60) { rl++; GLOG("angle: framework %s -> ANGLE", nm); }
-                }
+                int known = 0;
+                for (int q = 0; q < g_rt_n; q++) if (g_rt_slot[q] == slot) { known = 1; break; }
+                if (!known && g_rt_n < 256) { g_rt_slot[g_rt_n] = slot; g_rt_name[g_rt_n] = nm; g_rt_done[g_rt_n] = 0; g_rt_n++; }
                 continue;
             }
             for (int k = 0; tab[k].name; k++) {
@@ -1525,12 +1520,35 @@ static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
     return 0;
 }
 
+static int fh_rt_apply(void) {
+    int n = 0;
+    if (!g_real_egpa) return 0;
+    for (int q = 0; q < g_rt_n; q++) {
+        if (g_rt_done[q]) continue;
+        const char *nm = g_rt_name[q]; void **slot = g_rt_slot[q];
+        void *np = ((egpa_t)g_real_egpa)(nm);
+        { void *wp = np ? ang_wrapper(nm) : NULL; if (wp) np = wp; }
+        g_rt_done[q] = 1;
+        static volatile int nn = 0;
+        if (!np) { if (nn < 8) { nn++; GLOG("angle: ANGLE has no %s", nm); } continue; }
+        if (*slot == np) continue;
+        uintptr_t pg = (uintptr_t)slot & ~(uintptr_t)4095;
+        int mp = mprotect((void *)pg, 4096, PROT_READ | PROT_WRITE);
+        if (mp != 0) { GLOG("angle: could not make the slot of %s writable (errno %d)", nm, errno); continue; }
+        *slot = np; n++;
+        static volatile int rl = 0;
+        if (rl < 60) { rl++; GLOG("angle: framework %s -> ANGLE", nm); }
+    }
+    return n;
+}
+
 static void *fh_thread(void *arg) {
     (void)arg;
     int found = 0;
     for (int i = 0; i < 3000; i++) {            /* ~3 min: the game's libraries load at different times */
         int count = 0;
         dl_iterate_phdr(fh_patch_cb, &count);
+        count += fh_rt_apply();
         if (count) GLOG("file hooks: patched %d imports in the game's libraries", count);
         if (g_rdr_base) found = 1;
         usleep(found && i > 1500 ? 100000 : 20000);
