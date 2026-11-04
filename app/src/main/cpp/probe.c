@@ -1185,6 +1185,7 @@ static const char *fh_redirect(const char *p, char *buf, size_t n, int create) {
         size_t l = strlen(roots[i]);
         if (strncmp(p, roots[i], l)) continue;
         const char *q = p + l; const char *kind = NULL;
+        while (q[0] == '/' && q[1] == '/') q++;      /* the game builds ".../0//Android/obb/..." */
         if (!strncmp(q, "/Android/data/", 14)) { kind = "data"; q += 14; }
         else if (!strncmp(q, "/Android/obb/", 13)) { kind = "obb"; q += 13; }
         else continue;
