@@ -24,6 +24,7 @@
 #include "fxaa_spv.h"
 #include "fsr_spv.h"
 #include "scale_spv.h"
+#include <stdio.h>
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "GuestHost", __VA_ARGS__)
 extern void *vkshim_real_proc(const char *name);
@@ -219,7 +220,7 @@ static int epi_load(void) {
 }
 
 typedef struct {
-    int used, failed;
+    int used, failed, mutfmt;
     VkSwapchainKHR sc; VkDevice dev; VkFormat fmt; VkExtent2D in, out; uint32_t n, family;
     VkImage rimg[MAXI], pimg[MAXI]; VkDeviceMemory pmem[MAXI];
     VkImageView pview[MAXI], rview[MAXI]; VkFramebuffer fb[MAXI];
@@ -431,6 +432,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             .tiling = VK_IMAGE_TILING_OPTIMAL, .usage = gameUsage | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                                                          (c->lg ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0),
             .sharingMode = VK_SHARING_MODE_EXCLUSIVE, .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED };
+        if (c->mutfmt) ici.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
         VkMemoryRequirements mr;
         VkMemoryAllocateInfo mai = { .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
         VkImageViewCreateInfo vci = { .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .viewType = VK_IMAGE_VIEW_TYPE_2D,
@@ -723,9 +725,15 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
     VkPhysicalDevice phys = vkshim_phys_of(dev);
     int fok = 0; uint32_t family = vkshim_first_queue_family(&fok);
     VkSurfaceCapabilitiesKHR caps;
-    if (ci.flags != 0 || ci.imageArrayLayers != 1) why = "unusual swapchain flags";
+    /* ANGLE (OpenGL ES games) asks for a swapchain that can change image formats (0x4) and/or that allocates its images late (0x8);
+     * the proxy images take over the first, and our own full-size swapchain needs neither. */
+    static char whybuf[96];
+    if ((ci.flags & ~(VkSwapchainCreateFlagsKHR)0xC) != 0 || ci.imageArrayLayers != 1) {
+        snprintf(whybuf, sizeof whybuf, "unusual swapchain flags (0x%x, %u layers)", (unsigned)ci.flags, (unsigned)ci.imageArrayLayers);
+        why = whybuf;
+    }
     else if (ci.imageSharingMode != VK_SHARING_MODE_EXCLUSIVE) why = "concurrent sharing";
-    else if (ci.preTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) why = "rotated surface";
+    else if (ci.preTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) { snprintf(whybuf, sizeof whybuf, "rotated surface (transform 0x%x)", (unsigned)ci.preTransform); why = whybuf; }
     else if (!phys) why = "physical device unknown";
     else if (!fok) why = "no queue seen yet";
     if (!why && F.GetCaps(phys, ci.surface, &caps) != VK_SUCCESS) why = "surface size unavailable";
@@ -768,11 +776,13 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
           c->rect.extent.width = rw; c->rect.extent.height = rh;
           c->rect.offset.x = (int32_t)((caps.currentExtent.width - rw) / 2); c->rect.offset.y = (int32_t)((caps.currentExtent.height - rh) / 2);
       } }
+    c->mutfmt = (ci.flags & 0x4) != 0;
     c->lg = wantLg;
     c->used = 1; c->dev = dev; c->fmt = ci.imageFormat; c->in = ci.imageExtent; c->out = caps.currentExtent; c->family = family;
 
     VkSwapchainCreateInfoKHR rci = ci;
     rci.imageExtent = caps.currentExtent;
+    rci.flags = 0;
     rci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     if (c->lg) {                                           /* one image more: a generated frame is shown next to the game's */
         rci.minImageCount = ci.minImageCount + 1;
