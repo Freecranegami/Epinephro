@@ -133,6 +133,7 @@ object Tweaks {
                 Os.setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", true)
                 Os.setenv("LAS_ANGLE", "1", true)
             } else Os.setenv("LAS_ANGLE", "0", true)
+            PerfOverlay.prepare(ctx)
             val pk = Prefs.scope
             if (pcache(ctx) && pk != null) {
                 val f = Caches.file(ctx, pk); f.parentFile?.mkdirs()

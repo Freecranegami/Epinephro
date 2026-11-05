@@ -96,6 +96,7 @@ private object GuestSwap : Application.ActivityLifecycleCallbacks {
         life("resumed", activity)
         if (activity.javaClass.classLoader is GuestLoader) Tweaks.applyWindow(activity)
         if (activity is GuestActivity || activity is GuestNativeActivity || activity.javaClass.classLoader is GuestLoader) PadOverlay.attach(activity)
+        if (activity.javaClass.classLoader is GuestLoader) PerfOverlay.attach(activity)
         if (activity.javaClass.classLoader !is GuestLoader || watched.contains(activity)) return
         watched.add(activity)
         try {
@@ -110,10 +111,10 @@ private object GuestSwap : Application.ActivityLifecycleCallbacks {
             })
         } catch (t: Throwable) { Log.w("GuestHost", "focus watch failed: $t") }
     }
-    override fun onActivityPaused(activity: Activity) = life("PAUSED", activity)
+    override fun onActivityPaused(activity: Activity) { PerfOverlay.detach(activity); life("PAUSED", activity) }
     override fun onActivityStopped(activity: Activity) = life("STOPPED", activity)
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-    override fun onActivityDestroyed(activity: Activity) { PadOverlay.detach(activity); life("DESTROYED", activity) }
+    override fun onActivityDestroyed(activity: Activity) { PadOverlay.detach(activity); PerfOverlay.detach(activity); life("DESTROYED", activity) }
 }
 
 // The phone's log buffer is small, so by the time the log is read after a long run the launch lines

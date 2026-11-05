@@ -21,6 +21,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/resource.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 #include <sys/syscall.h>
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "GuestHost", __VA_ARGS__)
@@ -196,8 +198,27 @@ void vkshim_pc_destroy(long dev, long cache) {
     pthread_mutex_lock(&g_mx); g_cache = VK_NULL_HANDLE; pthread_mutex_unlock(&g_mx);
 }
 
+/* ---- frame counter for the performance overlay: the app maps the same file and reads the number ---- */
+static volatile uint64_t *g_ctr;
+static volatile int g_ctr_state;                 /* 0 = not looked at, 1 = being set up, 2 = done */
+static void ctr_init(void) {
+    if (!__sync_bool_compare_and_swap(&g_ctr_state, 0, 1)) return;
+    const char *f = getenv("LAS_PERF_FILE");
+    if (f && *f) {
+        int fd = open(f, O_RDWR);
+        if (fd >= 0) {
+            void *m = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            close(fd);
+            if (m != MAP_FAILED) { g_ctr = (volatile uint64_t *)m; LOGI("overlay: frame counter ready"); }
+        }
+    }
+    g_ctr_state = 2;
+}
+
 /* ---- a little more priority for the thread that presents frames (once per thread) ---- */
 void vkshim_perf_present(void) {
+    if (g_ctr_state != 2) ctr_init();
+    if (g_ctr) __atomic_add_fetch(g_ctr, 1, __ATOMIC_RELAXED);
     static __thread int done;
     if (done) return;
     done = 1;
