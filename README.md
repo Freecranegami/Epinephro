@@ -155,7 +155,20 @@ This project stands on other people's work. Each file keeps its own licence head
 
 ## ⚖️ Licences
 
-The app's own code has no licence file yet. Third-party code keeps its own licence: SGSR is BSD-3-Clause, FSR, CAS, lsfg-vk, Rendu and several effects are MIT, and ReShade FX is BSD-3-Clause. **Some bundled CRT shaders (Geom, cgwg, Caligari, CRT-Pi, zfast_crt) are under the GNU GPL**, so anyone redistributing the app should check what that means for them.
+Epinephro's own code is free software under the **[GNU General Public License v3.0](LICENSE)**. You can use, study, change and share it, and if you distribute a modified version you must do so under the same licence and make its source available.
+
+Third-party code keeps its own licence, and each file keeps its header. Everything bundled is compatible with the GPL-3.0:
+
+| Licence | What |
+|---|---|
+| BSD-3-Clause | ANGLE (not bundled in the source, fetched at build time), Snapdragon Game Super Resolution, ReShade and the `reshadefx` compiler |
+| MIT | FidelityFX FSR 1 and CAS, lsfg-vk and its framegen code, volk, pe-parse, Rendu (FXAA), several SweetFX / ReShade effects |
+| zlib | the dxbc code that lsfg-vk bundles (from DXVK) |
+| Public domain | stb_image |
+| Khronos licences | SPIRV-Headers and the Vulkan headers |
+| GPL-2.0-or-later (or "GPL", no version given) | the bundled CRT shaders Geom, cgwg, Caligari, CRT-Pi, zfast_crt, Easymode and Aperture. A "later version" or an unspecified version can be used under the GPL-3.0, which is why they can ship inside a GPL-3.0 app |
+
+Custom Vulkan drivers (Qualcomm or Turnip packages) and the games themselves are **not** part of Epinephro and are not covered by this licence. Turnip is part of [Mesa](https://docs.mesa3d.org/license.html) (MIT); Qualcomm's driver is Qualcomm's proprietary software and comes from the driver package you choose, not from this repository.
 
 ## ⚖️ Disclaimer
 
