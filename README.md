@@ -35,7 +35,7 @@ Because the app sits between the game and the GPU, it can also do things the gam
 | 🎮 | **Virtual Xbox 360 controller**: on-screen sticks and buttons with a layout editor |
 | 🛠️ | **Compatibility tools**: GPU and device spoofing, file redirects, asset-pack handling, per-game settings, logs |
 
-**Status:** experimental. It has been tried on one phone (Adreno 619, Android 13) and mostly with one game. Other phones and games may not work. You need your own legitimate copies of any game; none are included. The game should be installed on your phone,just importing it in the app without having it on your phone makes it crash.
+**Status:** experimental. It has been tried on one phone (Adreno 619, Android 13) and mostly with one game. Other phones and games may not work. You need your own legitimate copies of any game; none are included. The game should be installed on your phone,just importing it in the app without having it on your phone MIGHT make it crash.
 
 ---
 
