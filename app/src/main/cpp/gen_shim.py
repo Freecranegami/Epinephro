@@ -89,6 +89,8 @@ lines.append("")
 lines.append("#define VKSHIM_COUNT %d" % len(names))
 lines.append("")
 lines.append('__attribute__((visibility("hidden"), used)) void *vkshim_table[VKSHIM_COUNT];')
+lines.append("static void vkshim_missing(void);")
+lines.append("static void *vkshim_fb[VKSHIM_COUNT];   /* the driver's own function, for a hooked name the loader does not export */")
 lines.append("")
 lines.append("static const char *const vkshim_names[VKSHIM_COUNT] = {")
 for n in names:
@@ -258,7 +260,7 @@ for i, n in enumerate(names):
             lines.append("    return vkshim_sgsr_images(a0, a1, a2, a3, (vkshim_f4)vkshim_table[%d]);" % i)
         elif n in ("vkGetPhysicalDeviceSurfaceCapabilitiesKHR", "vkGetPhysicalDeviceSurfaceCapabilities2KHR"):
             lines.append("%s long %s(long a0, long a1, long a2) {" % (e, n))
-            lines.append("    long r = %s(a0, a1, a2, (vkshim_f3)vkshim_table[%d]);" % ("vkshim_res_caps" if n.endswith("KHR") and "2KHR" not in n else "vkshim_res_caps2", i))
+            lines.append("    long r = %s(a0, a1, a2, (vkshim_f3)(vkshim_table[%d] == (void *)vkshim_missing ? vkshim_fb[%d] : vkshim_table[%d]));" % ("vkshim_res_caps" if n.endswith("KHR") and "2KHR" not in n else "vkshim_res_caps2", i, i, i))
             lines.append("    return r;")
         elif n == "vkCreateDevice":
             lines.append("%s long %s(long a0, long a1, long a2, long a3, long a4, long a5, long a6, long a7) {" % (e, n))
@@ -336,6 +338,7 @@ lines.append("             * nothing. Hand out the driver's own function for tho
 lines.append("            if (vkshim_table[i] == (void *)vkshim_missing) {")
 lines.append("                static volatile int logged;")
 lines.append("                if (logged < 12) { logged++; __android_log_print(ANDROID_LOG_INFO, \"GuestHost\", \"vkshim: %s is not exported by the loader, using the driver's own\", n); }")
+lines.append("                if (!strcmp(n, \"vkGetPhysicalDeviceSurfaceCapabilities2KHR\")) { vkshim_fb[i] = real; return vkshim_wrap[i]; }   /* hooked: hide the surface rotation */")
 lines.append("                return real;")
 lines.append("            }")
 lines.append("            return vkshim_wrap[i];")

@@ -465,7 +465,17 @@ static void cas_setup(Cas *c, VkQueue queue) {
 
 /* ---------- custom resolution: what the game is told the surface size is ---------- */
 typedef long (*cas_f3)(long, long, long);
+extern int vkshim_sgsr_enabled(void);
 static void res_apply(VkSurfaceCapabilitiesKHR *c) {
+    /* A rotated screen (the usual state of a landscape game): OpenGL ES through ANGLE then builds a swapchain pre-rotated to the
+     * screen's native orientation, which the effects/upscalers can't work on. While the layer takes over the swapchain, tell the
+     * game the surface is not rotated; the system turns the finished picture, as it does for any Vulkan game. */
+    if (c->currentTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR && vkshim_sgsr_enabled()) {
+        static int said = 0;
+        if (!said) { said = 1; LOGI("surface: transform 0x%x hidden from the game (reported as not rotated)", (unsigned)c->currentTransform); }
+        c->currentTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+        c->supportedTransforms |= VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    }
     const char *sw = getenv("LAS_RES_W"), *sh = getenv("LAS_RES_H");
     int w = sw ? atoi(sw) : 0, h = sh ? atoi(sh) : 0;
     if (w <= 0 || h <= 0 || c->currentExtent.width == 0xFFFFFFFFu) return;
