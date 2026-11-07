@@ -24,6 +24,10 @@ object Tweaks {
     fun sustained(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("sustained", true)
     fun setSustained(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("sustained", on).commit() }
 
+    // FSR upscaling maths in half (16-bit) precision: faster on Adreno; switch off if the picture shows artefacts.
+    fun fsrHalf(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("fsr_half", true)
+    fun setFsrHalf(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("fsr_half", on).commit() }
+
     // Ignore the notch / camera cut-out: the game's window is drawn into the cut-out area too (the whole screen).
     fun ignoreNotch(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("ignore_notch", false)
     fun setIgnoreNotch(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("ignore_notch", on).commit() }
@@ -134,6 +138,7 @@ object Tweaks {
                 Os.setenv("LAS_ANGLE", "1", true)
             } else Os.setenv("LAS_ANGLE", "0", true)
             PerfOverlay.prepare(ctx)
+            Os.setenv("LAS_FSR_HALF", if (fsrHalf(ctx)) "1" else "0", true)
             val pk = Prefs.scope
             if (pcache(ctx) && pk != null) {
                 val f = Caches.file(ctx, pk); f.parentFile?.mkdirs()

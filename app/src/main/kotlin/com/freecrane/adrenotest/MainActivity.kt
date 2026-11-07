@@ -867,6 +867,8 @@ class MainActivity : Activity() {
             { Tweaks.pcache(this) }) { Tweaks.setPcache(this, !Tweaks.pcache(this)); refreshPage() }
         toggle(b, "Sustained performance", "Asks the phone for steady speed instead of short bursts that then throttle (if it has the mode) and gives the render thread a little more priority. Applies the next time the game starts.",
             { Tweaks.sustained(this) }) { Tweaks.setSustained(this, !Tweaks.sustained(this)); refreshPage() }
+        toggle(b, "FSR half precision", "Runs the FSR upscale in 16-bit maths, which is faster on Adreno GPUs. Turn it off if the picture shows odd colours or noise. Applies the next time the game starts.",
+            { Tweaks.fsrHalf(this) }) { Tweaks.setFsrHalf(this, !Tweaks.fsrHalf(this)); outView.text = "FSR half precision ${if (Tweaks.fsrHalf(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
         toggle(b, "Performance overlay", "A small card you can drag around the screen: frames per second, CPU temperature and battery (level and power use). Light: one update a second.",
             { PerfOverlay.enabled(this) }) { PerfOverlay.setEnabled(this, !PerfOverlay.enabled(this)); outView.text = "Performance overlay ${if (PerfOverlay.enabled(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
         addCaches(b)

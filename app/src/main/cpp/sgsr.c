@@ -220,7 +220,7 @@ static int epi_load(void) {
 }
 
 typedef struct {
-    int used, failed, mutfmt;
+    int used, failed, mutfmt, hasfl; VkImageFormatListCreateInfo fl;
     VkSwapchainKHR sc; VkDevice dev; VkFormat fmt; VkExtent2D in, out; uint32_t n, family;
     VkImage rimg[MAXI], pimg[MAXI]; VkDeviceMemory pmem[MAXI];
     VkImageView pview[MAXI], rview[MAXI]; VkFramebuffer fb[MAXI];
@@ -433,6 +433,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
                                                          (c->lg ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0),
             .sharingMode = VK_SHARING_MODE_EXCLUSIVE, .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED };
         if (c->mutfmt) ici.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+        if (c->mutfmt && c->hasfl) ici.pNext = &c->fl;      /* the game's own list of view formats: lets the driver keep the image compressed */
         VkMemoryRequirements mr;
         VkMemoryAllocateInfo mai = { .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
         VkImageViewCreateInfo vci = { .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .viewType = VK_IMAGE_VIEW_TYPE_2D,
@@ -609,7 +610,9 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         ST("create vertex shader", F.CreateShaderModule(d, &smi, NULL, &c->vs));
         smi.codeSize = sizeof fsr_rcas_fs_spv; smi.pCode = fsr_rcas_fs_spv;
         ST("create RCAS shader", F.CreateShaderModule(d, &smi, NULL, &c->fs));
-        smi.codeSize = sizeof fsr_easu_fs_spv; smi.pCode = fsr_easu_fs_spv;
+        { const char *hh = getenv("LAS_FSR_HALF"); int half = !(hh && *hh == '0');   /* half precision unless switched off */
+          smi.codeSize = half ? sizeof fsr_easu_h_fs_spv : sizeof fsr_easu_fs_spv; smi.pCode = half ? fsr_easu_h_fs_spv : fsr_easu_fs_spv;
+          LOGI("sgsr: EASU in %s precision", half ? "half (16-bit)" : "full (32-bit)"); }
         ST("create EASU shader", F.CreateShaderModule(d, &smi, NULL, &c->efs));
         if (c->norcas) ST("create EASU pipeline", mk_pipe(c, c->vs, c->efs, c->rp, c->rect, &c->pipe));
         else {
@@ -777,6 +780,12 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
           c->rect.offset.x = (int32_t)((caps.currentExtent.width - rw) / 2); c->rect.offset.y = (int32_t)((caps.currentExtent.height - rh) / 2);
       } }
     c->mutfmt = (ci.flags & 0x4) != 0;
+    c->hasfl = 0;
+    if (c->mutfmt) for (const VkBaseInStructure *n = (const VkBaseInStructure *)ci.pNext; n; n = n->pNext)
+        if (n->sType == VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO) {
+            c->fl = *(const VkImageFormatListCreateInfo *)n; c->fl.pNext = NULL; c->hasfl = c->fl.viewFormatCount > 0; break;
+        }
+    LOGI("sgsr: game swapchain usage 0x%x, flags 0x%x%s", (unsigned)ci.imageUsage, (unsigned)ci.flags, c->hasfl ? ", with a view format list" : "");
     c->lg = wantLg;
     c->used = 1; c->dev = dev; c->fmt = ci.imageFormat; c->in = ci.imageExtent; c->out = caps.currentExtent; c->family = family;
 
