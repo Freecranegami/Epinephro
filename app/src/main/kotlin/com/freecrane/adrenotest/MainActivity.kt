@@ -446,8 +446,8 @@ class MainActivity : Activity() {
     private fun toggleLight(out: TextView) {
         val on = !Tweaks.light(this)
         Tweaks.setLight(this, on)
-        out.text = if (on) "Light mode ON: diagnostics are off for best performance (Guest log will have little in it). Applies the next time the game starts."
-                   else "Light mode OFF: full diagnostics. Applies the next time the game starts."
+        out.text = if (on) "Light mode ON: diagnostics are off and the shim stays out of the game's way (the Guest log will have little in it). Applies the next time the game starts."
+                   else "Light mode OFF: full diagnostics and Guest log, slightly more CPU use. Applies the next time the game starts."
     }
 
     private fun chooseResolution(out: TextView) {
@@ -853,7 +853,7 @@ class MainActivity : Activity() {
         action(b, "CPU spoof", GpuSpoof.cpus[GpuSpoof.cpuIndex(this)].label) { chooseCpu(outView) }
         action(b, "Device spoof", GpuSpoof.devices[GpuSpoof.deviceIndex(this)].label) { chooseDevice(outView) }
         toggle(b, "Focus guard", "Keeps the game running when the notification shade opens", { FocusGuard.enabled(this) }) { toggleFocusGuard(outView) }
-        toggle(b, "Light mode", "No diagnostics, best performance", { Tweaks.light(this) }) { toggleLight(outView) }
+        toggle(b, "Light mode", "No diagnostics, best performance. Turn it OFF to record a Guest log for a bug report", { Tweaks.light(this) }) { toggleLight(outView) }
     }
 
     private fun addDriver(b: LinearLayout) {

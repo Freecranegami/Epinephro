@@ -10,7 +10,7 @@ import android.util.Log
 object Tweaks {
     private const val PREFS = "las"
 
-    fun light(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("light_mode", false)
+    fun light(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("light_mode", true)   // on by default: diagnostics cost CPU on every call
     fun setLight(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("light_mode", on).commit() }
 
     // OpenGL ES games through ANGLE (OpenGL ES translated to Vulkan, running on our Vulkan layer and custom driver).

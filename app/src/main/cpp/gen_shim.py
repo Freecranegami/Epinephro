@@ -328,11 +328,35 @@ lines.append("static void *const vkshim_wrap[VKSHIM_COUNT] = {")
 for n in names:
     lines.append("    %s," % ("(void *)" + n if (n in wrapped_set or n in PROC or n in SPOOF or n in CAS_HOOK or n in DIAGV) else "0"))
 lines.append("};")
+# In light mode the wrappers that only count, log or take diagnostics are not handed out at all: the game gets the
+# driver's own function and calls it directly, with nothing of ours in between. 1 = always pass through in light
+# mode, 2 = only while LAS_DRS (steady resolution) is off, 0 = we really need the wrapper.
+KEEP = set(CAS_HOOK) | set(SPOOF) | set(PROC) | {"vkCreateGraphicsPipelines", "vkCreateComputePipelines", "vkCreatePipelineCache",
+                                                 "vkDestroyPipelineCache", "vkCreateInstance"}
+DRS_ONLY = {"vkCreateQueryPool", "vkGetQueryPoolResults"}
+lines.append("static const unsigned char vkshim_pass[VKSHIM_COUNT] = {")
+for n in names:
+    if n in KEEP or not (n in wrapped_set or n in DIAGV):
+        v = 0
+    elif n in DRS_ONLY:
+        v = 2
+    else:
+        v = 1
+    lines.append("    %d,   /* %s */" % (v, n))
+lines.append("};")
+lines.append("static int vkshim_is_light(void) {")
+lines.append("    if (vkshim_light < 0) { const char *l = getenv(\"LAS_LIGHT\"); vkshim_light = (l && *l == '1'); }")
+lines.append("    return vkshim_light;")
+lines.append("}")
+lines.append("static int vkshim_drs_on(void) { const char *e = getenv(\"LAS_DRS\"); return e && e[0] == '1'; }")
 lines.append("static void vkshim_missing(void);")
 lines.append("static void *vkshim_lookup(const char *n, void *real) {")
 lines.append("    if (!real || !n) return real;")
+lines.append("    static int light = -1, drs = -1;")
+lines.append("    if (light < 0) { light = vkshim_is_light(); drs = vkshim_drs_on(); }")
 lines.append("    for (int i = 0; i < VKSHIM_COUNT; i++)")
 lines.append("        if (vkshim_wrap[i] && !strcmp(n, vkshim_names[i])) {")
+lines.append("            if (light && vkshim_pass[i] && !(vkshim_pass[i] == 2 && drs)) return real;   /* light mode: no wrapper in between */")
 lines.append("            /* the system loader does not export every function (extensions, newer core ones); our wrapper would jump to")
 lines.append("             * nothing. Hand out the driver's own function for those. */")
 lines.append("            if (vkshim_table[i] == (void *)vkshim_missing) {")

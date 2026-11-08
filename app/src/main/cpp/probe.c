@@ -1134,15 +1134,18 @@ static void fh_note(const char *fn, const char *p, int failed, int e, long rv) {
     if (g_light) return;
     if (p && !failed && strchr(p, '/') && !fh_boring(p) && strcmp(fn, "access") && strcmp(fn, "stat") && strcmp(fn, "lstat") && strcmp(fn, "fstatat"))
         oring_add(fn, p, rv);
-    if (!p || !strchr(p, '/')) return;   /* shader-name lookups and the like are not paths */
-    char key[300]; snprintf(key, sizeof key, "%s|%s", fn, p);
+    if (!p || p[0] != '/') return;       /* shader-name lookups and the like are not paths */
+    if (g_fail_logged >= 300 && g_ok_logged >= 250) return;   /* both log budgets used up: nothing more to do */
+    char key[300];
     if (failed) {
-        if (e == EEXIST || e == EINTR || e == EAGAIN || fh_boring(p)) return;
-        if (g_fail_logged >= 300 || !fh_dir_ok(p) || !fh_first(key)) return;
+        if (e == EEXIST || e == EINTR || e == EAGAIN || g_fail_logged >= 300 || fh_boring(p) || !fh_dir_ok(p)) return;
+        snprintf(key, sizeof key, "%s|%s", fn, p);
+        if (!fh_first(key)) return;
         g_fail_logged++;
         GLOG("native-fail %s(%.230s) errno=%d", fn, p, e);
-    } else if (strstr(p, "/packs/") || strstr(p, "/guests/")) {
-        if (g_ok_logged >= 250 || !fh_first(key)) return;
+    } else if (g_ok_logged < 250 && (strstr(p, "/packs/") || strstr(p, "/guests/"))) {
+        snprintf(key, sizeof key, "%s|%s", fn, p);
+        if (!fh_first(key)) return;
         g_ok_logged++;
         GLOG("native-open %s(%.230s) -> 0x%lx", fn, p, rv);
     }
@@ -1181,6 +1184,7 @@ static const char *fh_redirect(const char *p, char *buf, size_t n, int create) {
         }
     }
     if (!g_ext[0]) return p;
+    if (p[1] != 's' && p[1] != 'm' && p[1] != 'd') return p;   /* every storage root starts /s.. /m.. or /d.. : most paths stop here */
     for (int i = 0; roots[i]; i++) {
         size_t l = strlen(roots[i]);
         if (strncmp(p, roots[i], l)) continue;
