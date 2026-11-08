@@ -3,8 +3,10 @@ package com.freecrane.adrenotest
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import com.google.android.material.slider.LabelFormatter
+import com.google.android.material.slider.Slider
 
-// The look of the app: a clean dark theme (default) and a clean light one. Light mode is one global switch (the
+// The look of the app: Material 3, a clean dark theme (default) and a clean light one (colour roles in res/values/themes.xml). Light mode is one global switch (the
 // menu); it is stored in the defaults file and never per game. The only colour is on the switch cards: each section
 // has its own gradient pair, taken from the logo's colours.
 object Theme {
@@ -32,6 +34,10 @@ object Theme {
     val inset: Int get() = if (light) 0xFFE9EBF1.toInt() else 0xFF171B22.toInt()
     val text: Int get() = if (light) 0xFF1B1E26.toInt() else 0xFFEDEFF3.toInt()
     val sub: Int get() = if (light) 0xFF6B7280.toInt() else 0xFF9AA3B2.toInt()
+
+    // the selected entry of the menu (Material 3 "active indicator")
+    val container: Int get() = if (light) 0xFFF1DCFA.toInt() else 0xFF4A2A5E.toInt()
+    val onContainer: Int get() = if (light) 0xFF36004D.toInt() else 0xFFF6D8FF.toInt()
 
     private val pairs: List<Pair<Int, Int>> = listOf(MAGENTA to PINK, VIOLET to MAGENTA, PINK to ORANGE, GREEN to CYAN,
         CYAN to VIOLET, BLUE to VIOLET, GREEN to TEAL, ORANGE to PINK)
@@ -61,4 +67,26 @@ object Theme {
         val s = if (on) (if (light) 0.40f else 0.50f) else (if (light) 0.16f else 0.20f)
         return GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(mix(card, p.first, s), mix(card, p.second, s * 0.8f))).apply { cornerRadius = radius }
     }
+}
+
+// A Material 3 slider that behaves like the old SeekBar: whole numbers from 0 to max, `progress`, a change callback and a
+// callback for when the finger is lifted. The value is shown in a text above it, so the slider's own label stays off.
+class M3Seek(ctx: Context, max: Int, start: Int, onChange: (Int) -> Unit) : Slider(ctx) {
+    var onStop: ((Int) -> Unit)? = null
+    init {
+        valueFrom = 0f
+        valueTo = maxOf(1, max).toFloat()
+        stepSize = 1f
+        value = start.coerceIn(0, maxOf(1, max)).toFloat()
+        isTickVisible = false
+        labelBehavior = LabelFormatter.LABEL_GONE
+        addOnChangeListener { _, v, _ -> onChange(v.toInt()) }
+        addOnSliderTouchListener(object : OnSliderTouchListener {
+            override fun onStartTrackingTouch(slider: Slider) { }
+            override fun onStopTrackingTouch(slider: Slider) { onStop?.invoke(slider.value.toInt()) }
+        })
+    }
+    var progress: Int
+        get() = value.toInt()
+        set(v) { value = v.toFloat() }
 }

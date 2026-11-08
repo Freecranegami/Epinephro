@@ -1,7 +1,7 @@
 package com.freecrane.adrenotest
 
 import android.app.Activity
-import android.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
@@ -49,10 +49,12 @@ class FileManagerActivity : Activity() {
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-    private fun btn(label: String, onClick: () -> Unit): Button = Button(this).apply {
+    private fun btn(label: String, onClick: () -> Unit): Button = com.google.android.material.button.MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
         text = label
         isAllCaps = false
         textSize = 12f
+        setPadding(dp(4), 0, dp(4), 0)
+        insetTop = dp(2); insetBottom = dp(2)
         setOnClickListener { onClick() }
     }
 
@@ -86,8 +88,21 @@ class FileManagerActivity : Activity() {
             addView(row(btn("App files") { go(root) }, btn("Game data") { go(gameDir("ext/data/files", true)) },
                 btn("Games") { go(File(root, "guests")) }, btn("Import here") { importHere() }))
         }
+        val toolbar = com.google.android.material.appbar.MaterialToolbar(this).apply {
+            title = "File manager"
+            setBackgroundColor(Theme.bar)
+            setNavigationIcon(R.drawable.ic_back)
+            setNavigationIconTint(Theme.text)
+            setTitleTextColor(Theme.text)
+            setNavigationOnClickListener { finish() }
+        }
+        window.statusBarColor = Theme.bar
+        window.navigationBarColor = Theme.bg
+        window.decorView.systemUiVisibility = if (Theme.light)
+            android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
         val rootView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            addView(toolbar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)))
             addView(bar)
             addView(pathText)
             addView(statusText)
@@ -215,7 +230,7 @@ class FileManagerActivity : Activity() {
     private fun fileActions(f: File) {
         val items = arrayOf("View as text", "Export (save a copy to the phone)...", "Replace with a file from the phone...",
             "Copy", "Cut", "Rename", "Delete", "Info")
-        AlertDialog.Builder(this).setTitle(f.name).setItems(items) { _, which ->
+        MaterialAlertDialogBuilder(this).setTitle(f.name).setItems(items) { _, which ->
             when (which) {
                 0 -> viewText(f)
                 1 -> { pendingFile = f; startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
@@ -239,7 +254,7 @@ class FileManagerActivity : Activity() {
         } catch (t: Throwable) { "Couldn't read it: $t" }
         if (text == null) { toast("This doesn't look like a text file."); return }
         val tv = TextView(this).apply { this.text = text; textSize = 11f; typeface = android.graphics.Typeface.MONOSPACE; setPadding(dp(12), dp(8), dp(12), dp(8)); setTextIsSelectable(true) }
-        AlertDialog.Builder(this).setTitle(f.name).setView(ScrollView(this).apply { addView(tv) }).setPositiveButton("Close", null).show()
+        MaterialAlertDialogBuilder(this).setTitle(f.name).setView(ScrollView(this).apply { addView(tv) }).setPositiveButton("Close", null).show()
     }
 
     private fun info(f: File) {
@@ -253,12 +268,12 @@ class FileManagerActivity : Activity() {
                 runOnUiThread { tv.text = base + "$files files, ${human(bytes)}" }
             }.start()
         } else tv.text = base + "Size: ${human(f.length())} (${f.length()} bytes)"
-        AlertDialog.Builder(this).setTitle(f.name).setView(tv).setPositiveButton("Close", null).show()
+        MaterialAlertDialogBuilder(this).setTitle(f.name).setView(tv).setPositiveButton("Close", null).show()
     }
 
     private fun rename(f: File) {
         val box = EditText(this).apply { setText(f.name); setSelectAllOnFocus(true) }
-        AlertDialog.Builder(this).setTitle("Rename").setView(box).setPositiveButton("Rename") { _, _ ->
+        MaterialAlertDialogBuilder(this).setTitle("Rename").setView(box).setPositiveButton("Rename") { _, _ ->
             val n = box.text.toString().trim()
             val t = File(f.parentFile, n)
             when {
@@ -272,7 +287,7 @@ class FileManagerActivity : Activity() {
 
     private fun newItem(folder: Boolean) {
         val box = EditText(this).apply { hint = if (folder) "folder name" else "file name"; inputType = InputType.TYPE_CLASS_TEXT }
-        AlertDialog.Builder(this).setTitle(if (folder) "New folder" else "New empty file").setView(box).setPositiveButton("Create") { _, _ ->
+        MaterialAlertDialogBuilder(this).setTitle(if (folder) "New folder" else "New empty file").setView(box).setPositiveButton("Create") { _, _ ->
             val n = box.text.toString().trim()
             val t = File(cwd, n)
             when {
@@ -304,7 +319,7 @@ class FileManagerActivity : Activity() {
 
     // 0 = replace, 1 = keep both, 2 = skip
     private fun askConflict(count: Int, then: (Int) -> Unit) {
-        AlertDialog.Builder(this).setTitle("$count item(s) already exist here")
+        MaterialAlertDialogBuilder(this).setTitle("$count item(s) already exist here")
             .setItems(arrayOf("Replace them", "Keep both (rename the new ones)", "Skip them")) { _, w -> then(w) }
             .setNegativeButton("Cancel", null).show()
     }
@@ -373,7 +388,7 @@ class FileManagerActivity : Activity() {
         if (selected.isEmpty()) { toast("Long-press files to select them first (or tap one for its menu)."); return }
         val items = selected.toList()
         val what = if (items.size == 1) items[0].name else "${items.size} items"
-        AlertDialog.Builder(this).setTitle("Delete $what?").setMessage("This can't be undone.")
+        MaterialAlertDialogBuilder(this).setTitle("Delete $what?").setMessage("This can't be undone.")
             .setPositiveButton("Delete") { _, _ ->
                 work("Deleting...") { progress, _ ->
                     for (f in items) { progress(f.name); deleteRecursive(f) }
@@ -385,7 +400,7 @@ class FileManagerActivity : Activity() {
     // runs a job on a thread with a small progress dialog
     private fun work(title: String, job: (progress: (String) -> Unit, cancelled: () -> Boolean) -> Unit) {
         val cancel = java.util.concurrent.atomic.AtomicBoolean(false)
-        val dlg = AlertDialog.Builder(this).setTitle(title).setMessage("").setCancelable(false)
+        val dlg = MaterialAlertDialogBuilder(this).setTitle(title).setMessage("").setCancelable(false)
             .setNegativeButton("Cancel") { _, _ -> cancel.set(true) }.show()
         Thread {
             try { job({ s -> runOnUiThread { dlg.setMessage(s) } }, { cancel.get() }) }
@@ -398,7 +413,7 @@ class FileManagerActivity : Activity() {
 
     private fun replaceDialog(f: File) {
         val cb = CheckBox(this).apply { text = "Keep a backup (${f.name}.bak)"; isChecked = true; setPadding(dp(16), dp(8), dp(16), 0) }
-        AlertDialog.Builder(this).setTitle("Replace ${f.name}").setMessage("Pick the file that should take its place.").setView(cb)
+        MaterialAlertDialogBuilder(this).setTitle("Replace ${f.name}").setMessage("Pick the file that should take its place.").setView(cb)
             .setPositiveButton("Pick file...") { _, _ ->
                 pendingFile = f; pendingBackup = cb.isChecked
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), reqReplace)

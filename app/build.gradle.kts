@@ -56,3 +56,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
+
+dependencies {
+    // Material 3 for the screens of the app (the games never see it: they load from their own class loader)
+    implementation("com.google.android.material:material:1.12.0")
+}

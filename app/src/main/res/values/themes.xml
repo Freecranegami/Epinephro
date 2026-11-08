@@ -1,16 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The two looks of the app (see Theme.kt). They decide the colours of dialogs, switches and edit fields;
-         the screens themselves are drawn in code. -->
-    <style name="Theme.Epi.Dark" parent="@android:style/Theme.DeviceDefault">
-        <item name="android:colorAccent">#FFD04CF2</item>
+    <!-- Material 3 (see Theme.kt): the dark scheme keeps the app's original dark colours, magenta is the primary colour. -->
+    <style name="Theme.Epi.Dark" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#FFE3A9FF</item>
+        <item name="colorOnPrimary">#FF4B0F68</item>
+        <item name="colorPrimaryContainer">#FF67258A</item>
+        <item name="colorOnPrimaryContainer">#FFF6D8FF</item>
+        <item name="colorSecondary">#FFFFB1DC</item>
+        <item name="colorOnSecondary">#FF5B1140</item>
+        <item name="colorSecondaryContainer">#FF4A2A5E</item>
+        <item name="colorOnSecondaryContainer">#FFF6D8FF</item>
+        <item name="colorTertiary">#FF5CE9A0</item>
+        <item name="colorOnTertiary">#FF00391E</item>
+        <item name="colorTertiaryContainer">#FF005230</item>
+        <item name="colorOnTertiaryContainer">#FF7FF8B5</item>
+        <item name="android:colorBackground">#FF101318</item>
+        <item name="colorSurface">#FF101318</item>
+        <item name="colorOnBackground">#FFEDEFF3</item>
+        <item name="colorOnSurface">#FFEDEFF3</item>
+        <item name="colorSurfaceVariant">#FF2B303B</item>
+        <item name="colorOnSurfaceVariant">#FF9AA3B2</item>
+        <item name="colorOutline">#FF6F7585</item>
+        <item name="colorOutlineVariant">#FF3A3F4B</item>
+        <item name="colorSurfaceContainerLowest">#FF0B0E12</item>
+        <item name="colorSurfaceContainerLow">#FF141820</item>
+        <item name="colorSurfaceContainer">#FF171B22</item>
+        <item name="colorSurfaceContainerHigh">#FF1C212A</item>
+        <item name="colorSurfaceContainerHighest">#FF252B36</item>
         <item name="android:windowBackground">@color/epi_bg_dark</item>
-        <item name="android:colorBackground">@color/epi_bg_dark</item>
     </style>
-    <style name="Theme.Epi.Light" parent="@android:style/Theme.DeviceDefault.Light">
-        <item name="android:colorAccent">#FFB61FD9</item>
+    <style name="Theme.Epi.Light" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">#FF9A2FBA</item>
+        <item name="colorOnPrimary">#FFFFFFFF</item>
+        <item name="colorPrimaryContainer">#FFF6D8FF</item>
+        <item name="colorOnPrimaryContainer">#FF36004D</item>
+        <item name="colorSecondary">#FFA6336F</item>
+        <item name="colorOnSecondary">#FFFFFFFF</item>
+        <item name="colorSecondaryContainer">#FFF1DCFA</item>
+        <item name="colorOnSecondaryContainer">#FF36004D</item>
+        <item name="colorTertiary">#FF006D3D</item>
+        <item name="colorOnTertiary">#FFFFFFFF</item>
+        <item name="colorTertiaryContainer">#FF7FF8B5</item>
+        <item name="colorOnTertiaryContainer">#FF00210F</item>
+        <item name="android:colorBackground">#FFF2F3F7</item>
+        <item name="colorSurface">#FFF2F3F7</item>
+        <item name="colorOnBackground">#FF1B1E26</item>
+        <item name="colorOnSurface">#FF1B1E26</item>
+        <item name="colorSurfaceVariant">#FFE1E4EC</item>
+        <item name="colorOnSurfaceVariant">#FF6B7280</item>
+        <item name="colorOutline">#FF8A90A0</item>
+        <item name="colorOutlineVariant">#FFC9CDD8</item>
+        <item name="colorSurfaceContainerLowest">#FFFFFFFF</item>
+        <item name="colorSurfaceContainerLow">#FFF7F8FB</item>
+        <item name="colorSurfaceContainer">#FFFFFFFF</item>
+        <item name="colorSurfaceContainerHigh">#FFE9EBF1</item>
+        <item name="colorSurfaceContainerHighest">#FFE1E4EC</item>
         <item name="android:windowBackground">@color/epi_bg_light</item>
-        <item name="android:colorBackground">@color/epi_bg_light</item>
     </style>
     <color name="epi_bg_dark">#FF101318</color>
     <color name="epi_bg_light">#FFF2F3F7</color>

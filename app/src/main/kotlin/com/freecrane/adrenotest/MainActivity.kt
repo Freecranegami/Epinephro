@@ -1,7 +1,7 @@
 package com.freecrane.adrenotest
 
 import android.app.Activity
-import android.app.AlertDialog
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -290,7 +290,7 @@ class MainActivity : Activity() {
         val modes = arrayOf(
             "1. Vulkan (forced)",
             "2. Auto graphics (Unity chooses)")
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Launch mode")
             .setItems(modes) { _, which ->
                 val i = Intent(this, GuestActivity::class.java)
@@ -380,7 +380,7 @@ class MainActivity : Activity() {
 
     private fun chooseGpu(out: TextView) {
         val labels = GpuSpoof.presets.map { it.label }.toTypedArray()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("GPU the game sees")
             .setSingleChoiceItems(labels, GpuSpoof.index(this)) { d, which ->
                 GpuSpoof.set(this, which)
@@ -393,7 +393,7 @@ class MainActivity : Activity() {
 
     private fun chooseDevice(out: TextView) {
         val labels = GpuSpoof.devices.map { it.label }.toTypedArray()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Phone the game sees (also sets GPU + CPU)")
             .setSingleChoiceItems(labels, GpuSpoof.deviceIndex(this)) { d, which ->
                 GpuSpoof.setDevice(this, which)
@@ -412,7 +412,7 @@ class MainActivity : Activity() {
         if (drivers.isEmpty()) { out.text = "No driver found."; return }
         var sel = drivers.indexOfFirst { it.id == Drivers.selectedId(this) }.coerceAtLeast(0)
         val labels = drivers.map { it.label }.toTypedArray()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Vulkan driver for the game")
             .setSingleChoiceItems(labels, sel) { _, which -> sel = which }
             .setPositiveButton("Use") { _, _ ->
@@ -457,7 +457,7 @@ class MainActivity : Activity() {
         val labels = (pcts.map { p -> val (w, h) = sized(p); if (p == 100) "Native ($sw x $sh)" else "$p% ($w x $h)" } + "Custom...").toTypedArray()
         val cw = Tweaks.resW(this); val ch = Tweaks.resH(this)
         val cur = if (cw <= 0) 0 else pcts.indices.firstOrNull { sized(pcts[it]) == Pair(cw, ch) } ?: pcts.size
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Game resolution (screen is $sw x $sh)")
             .setSingleChoiceItems(labels, cur) { d, which ->
                 d.dismiss()
@@ -477,7 +477,7 @@ class MainActivity : Activity() {
         val hBox = android.widget.EditText(this).apply { hint = "height"; inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setText(Tweaks.resH(this@MainActivity).takeIf { it > 0 }?.toString() ?: "") }
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 16, 48, 0); addView(wBox); addView(hBox) }
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Custom resolution (landscape, e.g. 1280 x 576)")
             .setView(box)
             .setPositiveButton("Set") { _, _ ->
@@ -495,7 +495,7 @@ class MainActivity : Activity() {
 
     private fun chooseUpscaler(out: TextView) {
         val labels = Tweaks.upscalers.toTypedArray()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Upscaler")
             .setSingleChoiceItems(labels, Tweaks.upscaler(this)) { d, which ->
                 Tweaks.setUpscaler(this, which)
@@ -510,17 +510,13 @@ class MainActivity : Activity() {
     }
 
     private fun chooseRcas(out: TextView) {
-        val bar = android.widget.SeekBar(this).apply { max = 100; progress = Tweaks.rcasPercent(this@MainActivity) }
+        val bar = M3Seek(this, 100, Tweaks.rcasPercent(this@MainActivity)) { }
         val label = TextView(this).apply { setPadding(48, 32, 48, 0) }
         fun show(p: Int) { label.text = "RCAS sharpness: $p %  (${"%.2f".format(Tweaks.rcasStops(p))} stops; 100 % is the sharpest; 0 % skips the sharpening pass, which is faster)" }
         show(bar.progress)
-        bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, fromUser: Boolean) { show(p) }
-            override fun onStartTrackingTouch(s: android.widget.SeekBar?) {}
-            override fun onStopTrackingTouch(s: android.widget.SeekBar?) {}
-        })
+        bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0); addView(label); addView(bar) }
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("FSR 1 sharpening (RCAS)")
             .setView(box)
             .setPositiveButton("Set") { _, _ ->
@@ -578,19 +574,15 @@ class MainActivity : Activity() {
         val ctx = this
         val modes = arrayOf("Performance (lighter, faster)", "Quality (heavier, cleaner motion)")
         val group = android.widget.RadioGroup(this).apply { setPadding(48, 24, 48, 0) }
-        modes.forEachIndexed { i, s -> group.addView(android.widget.RadioButton(ctx).apply { text = s; id = 100 + i }) }
+        modes.forEachIndexed { i, s -> group.addView(com.google.android.material.radiobutton.MaterialRadioButton(ctx).apply { text = s; id = 100 + i }) }
         group.check(100 + (if (Tweaks.lsfgQuality(this)) 1 else 0))
-        val bar = android.widget.SeekBar(this).apply { max = 20; progress = Tweaks.lsfgFlowSteps(ctx) }
+        val bar = M3Seek(this, 20, Tweaks.lsfgFlowSteps(ctx)) { }
         val label = TextView(this).apply { setPadding(48, 32, 48, 0) }
         fun show(p: Int) { label.text = "Flow scale: ${"%.2f".format(java.util.Locale.US, p * 0.05)}  (lower = faster but rougher motion; values below 0.25 run as 0.25)" }
         show(bar.progress)
-        bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, fromUser: Boolean) { show(p) }
-            override fun onStartTrackingTouch(s: android.widget.SeekBar?) {}
-            override fun onStopTrackingTouch(s: android.widget.SeekBar?) {}
-        })
+        bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0); addView(group); addView(label); addView(bar) }
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("Frame generation settings")
             .setView(box)
             .setPositiveButton("Set") { _, _ ->
@@ -611,7 +603,7 @@ class MainActivity : Activity() {
 
     private fun chooseCpu(out: TextView) {
         val labels = GpuSpoof.cpus.map { it.label }.toTypedArray()
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle("CPU the game sees")
             .setSingleChoiceItems(labels, GpuSpoof.cpuIndex(this)) { d, which ->
                 GpuSpoof.setCpu(this, which)
@@ -636,7 +628,7 @@ class MainActivity : Activity() {
     private val cAccent get() = Theme.accentText(cur)
 
     private lateinit var content: android.widget.FrameLayout
-    private lateinit var titleView: TextView
+    private lateinit var toolbar: com.google.android.material.appbar.MaterialToolbar
     private lateinit var drawerPanel: LinearLayout
     private lateinit var scrim: android.view.View
     private lateinit var statusPanel: LinearLayout
@@ -654,59 +646,69 @@ class MainActivity : Activity() {
 
     private fun label(text: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
         this.text = text; textSize = size; setTextColor(color)
-        if (bold) typeface = android.graphics.Typeface.DEFAULT_BOLD
+        if (bold) typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)   // Material 3 uses the medium weight, not bold
     }
 
     private fun roundBg(color: Int, r: Int = 14) = android.graphics.drawable.GradientDrawable().apply {
         setColor(color); cornerRadius = dp(r).toFloat()
     }
 
-    // A section header, as before; its title is in the section's colour, and the switch cards after it use the same pair.
+    // A section header (Material 3 label): the title in the section's colour; the switch cards after it use the same pair.
     private fun header(b: LinearLayout, text: String) {
         cur = Theme.pairFor(text)
-        b.addView(label(text.uppercase(), 12f, cAccent, true).apply { setPadding(dp(4), dp(18), 0, dp(6)); letterSpacing = 0.08f })
+        b.addView(label(text, 14f, cAccent, true).apply { setPadding(dp(8), dp(20), 0, dp(8)) })
     }
 
+    // the ripple of a list row
+    private fun selectable(): android.graphics.drawable.Drawable? {
+        val tv = android.util.TypedValue()
+        return if (theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)) androidx.core.content.ContextCompat.getDrawable(this, tv.resourceId) else null
+    }
+
+    // A Material 3 filled card; the returned layout is the row inside it.
     private fun card(b: LinearLayout, onClick: (() -> Unit)?): LinearLayout {
+        val mc = com.google.android.material.card.MaterialCardView(this, null, com.google.android.material.R.attr.materialCardViewFilledStyle).apply {
+            setCardBackgroundColor(cCard); radius = dp(16).toFloat(); cardElevation = 0f; strokeWidth = 0
+        }
         val c = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            background = roundBg(cCard)
             setPadding(dp(16), dp(14), dp(16), dp(14))
-            if (onClick != null) { isClickable = true; setOnClickListener { onClick() } }
+            if (onClick != null) { isClickable = true; foreground = selectable(); setOnClickListener { onClick() } }
         }
-        b.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
+        mc.addView(c, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        b.addView(mc, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
         return c
     }
 
     private fun texts(title: String, sub: String?): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        addView(label(title, 15f, cText))
-        if (!sub.isNullOrEmpty()) addView(label(sub, 12f, cSub).apply { setPadding(0, dp(2), 0, 0) })
+        addView(label(title, 16f, cText))
+        if (!sub.isNullOrEmpty()) addView(label(sub, 13f, cSub).apply { setPadding(0, dp(2), 0, 0) })
     }
 
     private fun action(b: LinearLayout, title: String, sub: String?, onClick: () -> Unit) {
         val c = card(b, onClick)
         c.addView(texts(title, sub), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        c.addView(label("›", 22f, cSub))
+        c.addView(android.widget.ImageView(this).apply { setImageResource(R.drawable.ic_chevron); setColorFilter(cSub) }, LinearLayout.LayoutParams(dp(24), dp(24)))
     }
 
     private fun toggle(b: LinearLayout, title: String, sub: String?, get: () -> Boolean, flip: () -> Unit) {
         val c = card(b, null)
-        val sw = android.widget.Switch(this)
+        val sw = com.google.android.material.materialswitch.MaterialSwitch(this)
         val pair = cur
-        val r = dp(14).toFloat()
         var guard = false
         sw.isChecked = get()
-        c.background = Theme.toggleBg(pair, sw.isChecked, r)      // the switch cards carry the colour
+        c.background = Theme.toggleBg(pair, sw.isChecked, 0f)      // the switch cards carry the colour
         sw.setOnCheckedChangeListener { _, _ ->
             if (guard) return@setOnCheckedChangeListener
             flip()
             guard = true; sw.isChecked = get(); guard = false
-            c.background = Theme.toggleBg(pair, sw.isChecked, r)
+            c.background = Theme.toggleBg(pair, sw.isChecked, 0f)
         }
         c.setOnClickListener { sw.toggle() }
         c.isClickable = true
+        c.foreground = selectable()
         c.addView(texts(title, sub), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         c.addView(sw)
     }
@@ -781,14 +783,14 @@ class MainActivity : Activity() {
                 row.addView(label(p.label, 14f, cText))
                 row.addView(label(p.items[idx] + "  ›", 12f, cSub))
                 row.setOnClickListener {
-                    AlertDialog.Builder(this).setTitle(p.label)
+                    MaterialAlertDialogBuilder(this).setTitle(p.label)
                         .setSingleChoiceItems(p.items.toTypedArray(), idx) { d, which ->
                             Epi.setValue(this, e.id, p.name, doubleArrayOf(which.toDouble())); d.dismiss(); refreshPage()
                         }.show()
                 }
                 box.addView(row)
             } else if (p.type == "bool" || p.ui == "checkbox") {
-                val sw = android.widget.Switch(this).apply { text = p.label; setTextColor(cText); isChecked = cur[0] != 0.0; setPadding(0, dp(8), 0, dp(8)) }
+                val sw = com.google.android.material.materialswitch.MaterialSwitch(this).apply { text = p.label; setTextColor(cText); isChecked = cur[0] != 0.0; setPadding(0, dp(8), 0, dp(8)) }
                 sw.setOnCheckedChangeListener { _, on -> Epi.setValue(this, e.id, p.name, doubleArrayOf(if (on) 1.0 else 0.0)) }
                 box.addView(sw)
             } else {
@@ -803,17 +805,14 @@ class MainActivity : Activity() {
                     fun fmt(v: Double) = if (isInt) v.toLong().toString() else "%.3g".format(java.util.Locale.US, v)
                     val title = p.label + (if (comps > 1) " (${names[ci]})" else "")
                     val head = label("$title: ${fmt(v0)}", 13f, cText).apply { setPadding(0, dp(8), 0, 0) }
-                    val bar = android.widget.SeekBar(this).apply { max = n; progress = Math.round((v0 - mn) / st).toInt().coerceIn(0, n) }
+                    val bar = M3Seek(this, n, Math.round((v0 - mn) / st).toInt().coerceIn(0, n)) { }
                     fun valueAt(pr: Int) = (mn + pr * st).coerceIn(mn, mx)
-                    bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                        override fun onProgressChanged(sb: android.widget.SeekBar?, pr: Int, user: Boolean) { head.text = "$title: ${fmt(valueAt(pr))}" }
-                        override fun onStartTrackingTouch(sb: android.widget.SeekBar?) { }
-                        override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
-                            val a = (Epi.value(this@MainActivity, e.id, p.name) ?: p.def).copyOf(maxOf(comps, p.def.size))
-                            a[ci] = valueAt(bar.progress)
-                            Epi.setValue(this@MainActivity, e.id, p.name, a)
-                        }
-                    })
+                    bar.addOnChangeListener { _, v, _ -> head.text = "$title: ${fmt(valueAt(v.toInt()))}" }
+                    bar.onStop = { pr ->
+                        val a = (Epi.value(this@MainActivity, e.id, p.name) ?: p.def).copyOf(maxOf(comps, p.def.size))
+                        a[ci] = valueAt(pr)
+                        Epi.setValue(this@MainActivity, e.id, p.name, a)
+                    }
                     box.addView(head)
                     box.addView(bar)
                 }
@@ -840,17 +839,13 @@ class MainActivity : Activity() {
     }
 
     private fun choosePadOpacity() {
-        val bar = android.widget.SeekBar(this).apply { max = 85; progress = Pad.opacity(this@MainActivity) - 15 }
+        val bar = M3Seek(this, 85, Pad.opacity(this@MainActivity) - 15) { }
         val label = TextView(this).apply { setPadding(dp(20), dp(16), dp(20), 0) }
         fun show(p: Int) { label.text = "${p + 15} % visible" }
         show(bar.progress)
-        bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, u: Boolean) { show(p) }
-            override fun onStartTrackingTouch(sb: android.widget.SeekBar?) { }
-            override fun onStopTrackingTouch(sb: android.widget.SeekBar?) { }
-        })
+        bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(label); addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) }) }
-        AlertDialog.Builder(this).setTitle("Controller transparency").setView(box)
+        MaterialAlertDialogBuilder(this).setTitle("Controller transparency").setView(box)
             .setPositiveButton("Save") { _, _ -> Pad.setOpacity(this, bar.progress + 15); refreshPage() }
             .setNegativeButton("Cancel", null).show()
     }
@@ -896,13 +891,13 @@ class MainActivity : Activity() {
             action(b, "Pipeline caches", Caches.fmt(Caches.totalSize(this)) + " in total" + if (games.isEmpty()) " (nothing saved yet)" else "") { }
             for (g in games) {
                 action(b, GameMeta.name(this, g), Caches.fmt(Caches.gameSize(this, g)) + ". Tap to delete.") {
-                    AlertDialog.Builder(this).setTitle("Delete this cache?").setMessage("${GameMeta.name(this, g)} will build its shaders again the next time you play. Nothing else is lost.")
+                    MaterialAlertDialogBuilder(this).setTitle("Delete this cache?").setMessage("${GameMeta.name(this, g)} will build its shaders again the next time you play. Nothing else is lost.")
                         .setPositiveButton("Delete") { _, _ -> Caches.clear(this, g); outView.text = "Pipeline cache deleted."; refreshPage() }
                         .setNegativeButton("Cancel", null).show()
                 }
             }
             if (games.isNotEmpty()) action(b, "Delete all pipeline caches", null) {
-                AlertDialog.Builder(this).setTitle("Delete all pipeline caches?").setMessage("Games will build their shaders again the next time you play. Nothing else is lost.")
+                MaterialAlertDialogBuilder(this).setTitle("Delete all pipeline caches?").setMessage("Games will build their shaders again the next time you play. Nothing else is lost.")
                     .setPositiveButton("Delete") { _, _ -> Caches.clear(this, null); outView.text = "Pipeline caches deleted."; refreshPage() }
                     .setNegativeButton("Cancel", null).show()
             }
@@ -968,7 +963,7 @@ class MainActivity : Activity() {
             clipToOutline = true
         }, LinearLayout.LayoutParams(dp(56), dp(56)).apply { rightMargin = dp(14) })
         head.addView(texts(GameMeta.name(this, pkg), pkg), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val play = Button(this).apply { text = "Play"; isAllCaps = false; setOnClickListener { playGame(pkg) } }
+        val play = com.google.android.material.button.MaterialButton(this).apply { text = "Play"; isAllCaps = false; setOnClickListener { playGame(pkg) } }
         head.addView(play)
 
         header(box, "Game")
@@ -986,7 +981,7 @@ class MainActivity : Activity() {
         addDevice(box)
         addDriver(box)
         action(box, "Reset this game's settings", "Go back to the defaults") {
-            AlertDialog.Builder(this).setTitle("Reset settings?").setMessage("${GameMeta.name(this, pkg)} will follow the default settings again.")
+            MaterialAlertDialogBuilder(this).setTitle("Reset settings?").setMessage("${GameMeta.name(this, pkg)} will follow the default settings again.")
                 .setPositiveButton("Reset") { _, _ ->
                     Prefs.gameOnly(this, pkg).edit().clear().commit()
                     outView.text = "Settings reset. Applies the next time the game starts."
@@ -1062,9 +1057,10 @@ class MainActivity : Activity() {
     }
 
     private fun buildPage() {
-        titleView.text = pageTitle(page)
+        toolbar.title = pageTitle(page)
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(24)) }
         cur = pairForPage(page)
+        if (::scrim.isInitialized) markDrawer()
         when {
             page == "games" -> gamesPage(box)
             page == "graphics" -> addGraphics(box)
@@ -1114,7 +1110,7 @@ class MainActivity : Activity() {
     private fun renameGame(pkg: String) {
         val box = android.widget.EditText(this).apply { setText(GameMeta.name(this@MainActivity, pkg)); setSelectAllOnFocus(true); setSingleLine() }
         val wrap = LinearLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)) }
-        AlertDialog.Builder(this).setTitle("Game name").setView(wrap)
+        MaterialAlertDialogBuilder(this).setTitle("Game name").setView(wrap)
             .setPositiveButton("Save") { _, _ -> GameMeta.setName(this, pkg, box.text.toString()); refreshPage() }
             .setNeutralButton("Original name") { _, _ -> GameMeta.setName(this, pkg, ""); refreshPage() }
             .setNegativeButton("Cancel", null).show()
@@ -1122,7 +1118,7 @@ class MainActivity : Activity() {
 
     private fun chooseIcon(pkg: String) {
         val items = if (GameMeta.hasCustomIcon(this, pkg)) arrayOf("Pick a picture...", "Use the game's own icon") else arrayOf("Pick a picture...")
-        AlertDialog.Builder(this).setTitle("Icon").setItems(items) { _, which ->
+        MaterialAlertDialogBuilder(this).setTitle("Icon").setItems(items) { _, which ->
             if (which == 0) {
                 iconPkg = pkg
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }, iconRequest)
@@ -1169,25 +1165,40 @@ class MainActivity : Activity() {
     private fun pairForPage(p: String): Pair<Int, Int> =
         Theme.pairFor(when (p) { "framegen" -> "frame generation"; "pad" -> "controls"; "tools" -> "logs"; "diag" -> "device"; "epi" -> "epishaders"; else -> p.takeWhile { it != ':' } })
 
-    private fun drawerItem(text: String, p: String): TextView = label(text, 16f, cText).apply {
-        setPadding(dp(24), dp(14), dp(16), dp(14)); isClickable = true
-        setOnClickListener { showPage(p) }
+    private val drawerItems = ArrayList<Pair<String, TextView>>()
+
+    // a menu entry: 56 dp high, with the pill-shaped Material 3 indicator while its page is open
+    private fun drawerItem(text: String, p: String): TextView {
+        val tv = label(text, 15f, cText, true)
+        tv.gravity = android.view.Gravity.CENTER_VERTICAL
+        tv.setPadding(dp(16), 0, dp(16), 0); tv.isClickable = true
+        tv.setOnClickListener { showPage(p) }
+        drawerItems.add(p to tv)
+        return tv
     }
 
-    private fun drawerHeader(text: String): TextView = label(text.uppercase(), 11f, cSub, true).apply {
-        setPadding(dp(24), dp(18), dp(16), dp(4)); letterSpacing = 0.08f
+    private fun markDrawer() {
+        for ((p, tv) in drawerItems) {
+            val on = p == page
+            tv.background = if (on) roundBg(Theme.container, 28) else null
+            tv.setTextColor(if (on) Theme.onContainer else cText)
+        }
+    }
+
+    private fun drawerHeader(text: String): TextView = label(text, 14f, cSub, true).apply {
+        setPadding(dp(28), dp(18), dp(16), dp(8))
     }
 
     // The light mode switch: one global setting (never per game). It rebuilds the screen in the other colours.
     private fun lightRow(parent: LinearLayout) {
         val pair = Theme.pairFor("games")
-        val sw = android.widget.Switch(this)
+        val sw = com.google.android.material.materialswitch.MaterialSwitch(this)
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(12), dp(14), dp(12)); isClickable = true
         }
         sw.isChecked = Theme.light
-        row.background = Theme.toggleBg(pair, sw.isChecked, dp(14).toFloat())
+        row.background = Theme.toggleBg(pair, sw.isChecked, dp(16).toFloat())
         sw.setOnCheckedChangeListener { _, on -> Theme.setLight(this, on); recreate() }
         row.setOnClickListener { sw.toggle() }
         row.addView(texts("Light mode", "Brighter colours, for the whole app"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -1232,14 +1243,16 @@ class MainActivity : Activity() {
         val out = TextView(this).apply { textSize = 12f; setTextColor(cText); setTextIsSelectable(true) }
         outView = out
 
-        // top bar
-        titleView = label("Epinephro", 18f, cText, true)
-        val burger = label("☰", 26f, cText).apply { setPadding(dp(18), 0, dp(18), 0); gravity = android.view.Gravity.CENTER; isClickable = true; setOnClickListener { openDrawer() } }
-        val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setBackgroundColor(cBar)
-            addView(burger, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(56)))
-            addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        // top app bar (Material 3)
+        toolbar = com.google.android.material.appbar.MaterialToolbar(this).apply {
+            title = "Epinephro"
+            setBackgroundColor(cBar)
+            setNavigationIcon(R.drawable.ic_menu)
+            setNavigationIconTint(cText)
+            setTitleTextColor(cText)
+            setNavigationOnClickListener { openDrawer() }
         }
+        val bar = toolbar
 
         content = android.widget.FrameLayout(this)
 
@@ -1252,7 +1265,7 @@ class MainActivity : Activity() {
         }
         val outScroll = ScrollView(this).apply { addView(out); setPadding(dp(14), 0, dp(14), dp(10)) }
         statusPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(cBar); visibility = android.view.View.GONE
+            orientation = LinearLayout.VERTICAL; background = roundBg(cCard, 16); visibility = android.view.View.GONE
             addView(statusHead)
             addView(outScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(200)))
         }
@@ -1266,32 +1279,39 @@ class MainActivity : Activity() {
 
         val main = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg)
-            addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)))
             addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            addView(statusPanel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(statusPanel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(4), dp(12), dp(12)) })
         }
 
-        // side menu: just the name, the light mode switch, then the sections
+        // side menu (Material 3 navigation drawer): just the name, the light mode switch, then the sections
         scrim = android.view.View(this).apply { setBackgroundColor(0x99000000.toInt()); alpha = 0f; visibility = android.view.View.GONE; setOnClickListener { closeDrawer() } }
         drawerPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(cBar)
+            orientation = LinearLayout.VERTICAL
             isClickable = true
-            addView(label("Epinephro", 22f, cText, true).apply { setPadding(dp(24), dp(28), dp(16), dp(4)) })
-            addView(label("Defaults below apply to every game unless you change them in the game's own settings (press and hold a game).", 12f, cSub).apply { setPadding(dp(24), 0, dp(20), dp(8)) })
+            addView(label("Epinephro", 22f, cText, true).apply { setPadding(dp(28), dp(32), dp(16), dp(4)) })
+            addView(label("Defaults below apply to every game unless you change them in the game's own settings (press and hold a game).", 13f, cSub).apply { setPadding(dp(28), 0, dp(20), dp(8)) })
             lightRow(this)
-            addView(drawerItem("Games", "games"))
+            val lp = { LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)).apply { setMargins(dp(12), 0, dp(12), 0) } }
+            addView(drawerItem("Games", "games"), lp())
             addView(drawerHeader("Default settings"))
-            addView(drawerItem("Graphics", "graphics"))
-            addView(drawerItem("EpiShaders", "epi"))
-            addView(drawerItem("Controls", "pad"))
-            addView(drawerItem("Frame generation", "framegen"))
-            addView(drawerItem("Device", "device"))
-            addView(drawerItem("Driver", "driver"))
+            addView(drawerItem("Graphics", "graphics"), lp())
+            addView(drawerItem("EpiShaders", "epi"), lp())
+            addView(drawerItem("Controls", "pad"), lp())
+            addView(drawerItem("Frame generation", "framegen"), lp())
+            addView(drawerItem("Device", "device"), lp())
+            addView(drawerItem("Driver", "driver"), lp())
             addView(drawerHeader("More"))
-            addView(drawerItem("Tools and logs", "tools"))
-            addView(drawerItem("Diagnostics", "diag"))
+            addView(drawerItem("Tools and logs", "tools"), lp())
+            addView(drawerItem("Diagnostics", "diag"), lp())
+            setPadding(0, 0, 0, dp(24))
         }
-        val drawerScroll = ScrollView(this).apply { addView(drawerPanel); setBackgroundColor(cBar) }
+        val drawerScroll = ScrollView(this).apply {
+            addView(drawerPanel)
+            val r = dp(16).toFloat()
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(cBar); cornerRadii = floatArrayOf(0f, 0f, r, r, r, r, 0f, 0f) }
+            elevation = dp(8).toFloat()
+        }
 
         val root = android.widget.FrameLayout(this).apply {
             setBackgroundColor(cBg)
