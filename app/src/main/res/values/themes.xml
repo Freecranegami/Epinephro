@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The two looks of the app (see Theme.kt). They decide the colours of dialogs, switches and edit fields;
+         the screens themselves are drawn in code. -->
+    <style name="Theme.Epi.Dark" parent="@android:style/Theme.DeviceDefault">
+        <item name="android:colorAccent">#FFD04CF2</item>
+        <item name="android:windowBackground">@color/epi_bg_dark</item>
+        <item name="android:colorBackground">@color/epi_bg_dark</item>
+    </style>
+    <style name="Theme.Epi.Light" parent="@android:style/Theme.DeviceDefault.Light">
+        <item name="android:colorAccent">#FFB61FD9</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/epi_bg_light</item>
+        <item name="android:colorBackground">@color/epi_bg_light</item>
+    </style>
+    <color name="epi_bg_dark">#FF0E0A1A</color>
+    <color name="epi_bg_light">#FFFAF6FF</color>
+</resources>

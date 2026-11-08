@@ -626,12 +626,15 @@ class MainActivity : Activity() {
     // A home screen with the games, a side menu (three lines, top left) with the settings sections, and a settings page
     // per game (press and hold a game). Settings changed on a game's page belong to that game only (see Prefs).
 
-    private val cBg = 0xFF101318.toInt()
-    private val cBar = 0xFF171B22.toInt()
-    private val cCard = 0xFF1C212A.toInt()
-    private val cText = 0xFFEDEFF3.toInt()
-    private val cSub = 0xFF9AA3B2.toInt()
-    private val cAccent = 0xFF5B8DEF.toInt()
+    // Colours come from Theme (dark or light, see Theme.kt). cur is the colour pair of the section being built.
+    private val cBg get() = Theme.bg
+    private val cBar get() = Theme.inset
+    private val cCard get() = Theme.card
+    private val cText get() = Theme.text
+    private val cSub get() = Theme.sub
+    private var cur: Pair<Int, Int> = Theme.pairFor("games")
+    private val cAccent get() = Theme.accentText(cur)
+    private val density get() = resources.displayMetrics.density
 
     private lateinit var content: android.widget.FrameLayout
     private lateinit var titleView: TextView
@@ -659,16 +662,24 @@ class MainActivity : Activity() {
         setColor(color); cornerRadius = dp(r).toFloat()
     }
 
+    // A section header: a small gradient hexagon, the title in the section's colour and a fading line. Every section
+    // after it (its cards, switches, sliders) takes the same colour pair.
     private fun header(b: LinearLayout, text: String) {
-        b.addView(label(text.uppercase(), 12f, cAccent, true).apply { setPadding(dp(4), dp(18), 0, dp(6)); letterSpacing = 0.08f })
+        cur = Theme.pairFor(text)
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(20), 0, dp(8)) }
+        row.addView(android.view.View(this).apply { background = HexDrawable(cur.first, cur.second, 0, 0f) }, LinearLayout.LayoutParams(dp(16), dp(18)).apply { rightMargin = dp(8) })
+        row.addView(label(text.uppercase(), 12f, cAccent, true).apply { letterSpacing = 0.1f })
+        row.addView(android.view.View(this).apply { background = Theme.grad(Theme.alpha(cur.first, 0x70), Theme.alpha(cur.second, 0x00), 0f) },
+            LinearLayout.LayoutParams(0, dp(2), 1f).apply { leftMargin = dp(10); rightMargin = dp(4) })
+        b.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
     private fun card(b: LinearLayout, onClick: (() -> Unit)?): LinearLayout {
         val c = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
-            background = roundBg(cCard)
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = CardDrawable(cCard, cur.first, cur.second, dp(16).toFloat(), density)
+            setPadding(dp(20), dp(14), dp(16), dp(14))
             if (onClick != null) { isClickable = true; setOnClickListener { onClick() } }
         }
         b.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
@@ -684,12 +695,13 @@ class MainActivity : Activity() {
     private fun action(b: LinearLayout, title: String, sub: String?, onClick: () -> Unit) {
         val c = card(b, onClick)
         c.addView(texts(title, sub), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        c.addView(label("›", 22f, cSub))
+        c.addView(label("›", 24f, cAccent, true))
     }
 
     private fun toggle(b: LinearLayout, title: String, sub: String?, get: () -> Boolean, flip: () -> Unit) {
         val c = card(b, null)
         val sw = android.widget.Switch(this)
+        Theme.styleSwitch(sw, cur, density)
         var guard = false
         sw.isChecked = get()
         sw.setOnCheckedChangeListener { _, _ ->
@@ -751,7 +763,8 @@ class MainActivity : Activity() {
     private fun addEpiParams(b: LinearLayout, e: Epi.Effect) {
         val ps = Epi.params(this, e.id)
         val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = roundBg(cBar, 12); setPadding(dp(14), dp(8), dp(14), dp(10))
+            orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(10))
+            background = roundBg(cBar, 14).apply { setStroke(dp(1), Theme.alpha(cur.first, 0x55)) }
         }
         b.addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8); leftMargin = dp(10) })
         if (ps == null) {
@@ -781,6 +794,7 @@ class MainActivity : Activity() {
                 box.addView(row)
             } else if (p.type == "bool" || p.ui == "checkbox") {
                 val sw = android.widget.Switch(this).apply { text = p.label; setTextColor(cText); isChecked = cur[0] != 0.0; setPadding(0, dp(8), 0, dp(8)) }
+                Theme.styleSwitch(sw, this@MainActivity.cur, density)
                 sw.setOnCheckedChangeListener { _, on -> Epi.setValue(this, e.id, p.name, doubleArrayOf(if (on) 1.0 else 0.0)) }
                 box.addView(sw)
             } else {
@@ -796,6 +810,7 @@ class MainActivity : Activity() {
                     val title = p.label + (if (comps > 1) " (${names[ci]})" else "")
                     val head = label("$title: ${fmt(v0)}", 13f, cText).apply { setPadding(0, dp(8), 0, 0) }
                     val bar = android.widget.SeekBar(this).apply { max = n; progress = Math.round((v0 - mn) / st).toInt().coerceIn(0, n) }
+                    Theme.styleSeek(bar, this@MainActivity.cur)
                     fun valueAt(pr: Int) = (mn + pr * st).coerceIn(mn, mx)
                     bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
                         override fun onProgressChanged(sb: android.widget.SeekBar?, pr: Int, user: Boolean) { head.text = "$title: ${fmt(valueAt(pr))}" }
@@ -922,11 +937,17 @@ class MainActivity : Activity() {
                 setImageBitmap(GameMeta.icon(this@MainActivity, pkg))
                 scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
                 outlineProvider = object : android.view.ViewOutlineProvider() {
-                    override fun getOutline(v: android.view.View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(20).toFloat()) }
+                    override fun getOutline(v: android.view.View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(19).toFloat()) }
                 }
                 clipToOutline = true
             }
-            tile.addView(img, LinearLayout.LayoutParams(dp(84), dp(84)))
+            // every game icon sits in its own gradient frame
+            val gp = Theme.pairs[(pkg.hashCode() and 0x7fffffff) % Theme.pairs.size]
+            val ring = android.widget.FrameLayout(this).apply {
+                background = Theme.grad(gp.first, gp.second, dp(22).toFloat(), false); setPadding(dp(3), dp(3), dp(3), dp(3))
+                addView(img, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            }
+            tile.addView(ring, LinearLayout.LayoutParams(dp(88), dp(88)))
             tile.addView(label(GameMeta.name(this, pkg), 13f, cText).apply {
                 gravity = android.view.Gravity.CENTER; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, dp(6), 0, 0)
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -938,7 +959,10 @@ class MainActivity : Activity() {
             grid.addView(tile, lp())
         }
         val add = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER_HORIZONTAL; isClickable = true }
-        add.addView(label("+", 34f, cSub).apply { gravity = android.view.Gravity.CENTER; background = roundBg(cCard, 20) }, LinearLayout.LayoutParams(dp(84), dp(84)))
+        add.addView(label("+", 36f, cAccent, true).apply {
+            gravity = android.view.Gravity.CENTER
+            background = HexDrawable(Theme.MAGENTA, Theme.PINK, 0, 2.5f * density, false)
+        }, LinearLayout.LayoutParams(dp(88), dp(88)))
         add.addView(label("Add game", 13f, cSub).apply { gravity = android.view.Gravity.CENTER; setPadding(0, dp(6), 0, 0) })
         add.setOnClickListener { pickApk() }
         grid.addView(add, lp())
@@ -960,7 +984,8 @@ class MainActivity : Activity() {
             clipToOutline = true
         }, LinearLayout.LayoutParams(dp(56), dp(56)).apply { rightMargin = dp(14) })
         head.addView(texts(GameMeta.name(this, pkg), pkg), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val play = Button(this).apply { text = "Play"; isAllCaps = false; setOnClickListener { playGame(pkg) } }
+        val play = Button(this).apply { text = "Play"; setOnClickListener { playGame(pkg) } }
+        Theme.pillButton(play, cur, density)
         head.addView(play)
 
         header(box, "Game")
@@ -1056,6 +1081,8 @@ class MainActivity : Activity() {
     private fun buildPage() {
         titleView.text = pageTitle(page)
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(24)) }
+        cur = pairForPage(page)
+        if (::scrim.isInitialized) markDrawer()
         when {
             page == "games" -> gamesPage(box)
             page == "graphics" -> addGraphics(box)
@@ -1157,13 +1184,54 @@ class MainActivity : Activity() {
         (drawerSlide ?: drawerPanel).animate().translationX(-dp(290).toFloat()).setDuration(200).start()
     }
 
-    private fun drawerItem(text: String, p: String): TextView = label(text, 16f, cText).apply {
-        setPadding(dp(24), dp(14), dp(16), dp(14)); isClickable = true
-        setOnClickListener { showPage(p) }
+    private fun pairForPage(p: String): Pair<Int, Int> =
+        Theme.pairFor(when (p) { "framegen" -> "frame generation"; "pad" -> "controls"; "tools" -> "logs"; "diag" -> "device"; "epi" -> "epishaders"; else -> p.takeWhile { it != ':' } })
+
+    private val drawerItems = ArrayList<Pair<String, TextView>>()
+
+    // a menu entry: a gradient hexagon in the colour of the section, highlighted while its page is open
+    private fun drawerItem(text: String, p: String): TextView {
+        val pr = pairForPage(p)
+        val tv = label(text, 16f, cText)
+        tv.setPadding(dp(18), dp(13), dp(16), dp(13)); tv.isClickable = true
+        tv.compoundDrawablePadding = dp(14)
+        tv.setCompoundDrawables(HexDrawable(pr.first, pr.second, 0, 0f).apply { setBounds(0, 0, dp(16), dp(18)) }, null, null, null)
+        tv.setOnClickListener { showPage(p) }
+        drawerItems.add(p to tv)
+        return tv
+    }
+
+    private fun markDrawer() {
+        for ((p, tv) in drawerItems) {
+            val pr = pairForPage(p)
+            tv.background = if (p == page) Theme.grad(Theme.alpha(pr.first, if (Theme.light) 0x36 else 0x4A), Theme.alpha(pr.second, 0x00), dp(14).toFloat()) else null
+        }
     }
 
     private fun drawerHeader(text: String): TextView = label(text.uppercase(), 11f, cSub, true).apply {
-        setPadding(dp(24), dp(18), dp(16), dp(4)); letterSpacing = 0.08f
+        setPadding(dp(22), dp(18), dp(16), dp(4)); letterSpacing = 0.1f
+    }
+
+    // The light mode switch: one global setting (never per game). It rebuilds the screen in the other colours.
+    private fun lightRow(parent: LinearLayout) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+            background = CardDrawable(cCard, Theme.GREEN, Theme.CYAN, dp(16).toFloat(), density)
+            setPadding(dp(20), dp(12), dp(14), dp(12)); isClickable = true
+        }
+        val sw = android.widget.Switch(this)
+        Theme.styleSwitch(sw, Theme.GREEN to Theme.CYAN, density)
+        sw.isChecked = Theme.light
+        sw.setOnCheckedChangeListener { _, on -> Theme.setLight(this, on); recreate() }
+        row.setOnClickListener { sw.toggle() }
+        row.addView(texts("Light mode", "Brighter colours, for the whole app"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(sw)
+        parent.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(14), dp(12), dp(6)) })
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("page", page)
     }
 
     override fun onBackPressed() {
@@ -1185,35 +1253,44 @@ class MainActivity : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Theme.load(this)
+        setTheme(Theme.styleRes())          // dialogs, edit fields and the like follow the dark or light mode
         super.onCreate(savedInstanceState)
         try { actionBar?.hide() } catch (t: Throwable) { }
-        window.statusBarColor = cBar
+        window.statusBarColor = Theme.barA
         window.navigationBarColor = cBg
+        // white status bar icons on the coloured bar; dark navigation icons in light mode
+        window.decorView.systemUiVisibility = if (Theme.light) android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
 
         val out = TextView(this).apply { textSize = 12f; setTextColor(cText); setTextIsSelectable(true) }
         outView = out
 
-        // top bar
-        titleView = label("Epinephro", 18f, cText, true)
-        val burger = label("☰", 26f, cText).apply { setPadding(dp(18), 0, dp(18), 0); gravity = android.view.Gravity.CENTER; isClickable = true; setOnClickListener { openDrawer() } }
+        // top bar: gradient with the logo and a few translucent hexagons
+        titleView = label("Epinephro", 19f, android.graphics.Color.WHITE, true)
+        val burger = label("☰", 26f, android.graphics.Color.WHITE).apply { setPadding(dp(18), 0, dp(14), 0); gravity = android.view.Gravity.CENTER; isClickable = true; setOnClickListener { openDrawer() } }
         val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setBackgroundColor(cBar)
+            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+            background = BarDrawable(Theme.barA, Theme.barB, density)
+            elevation = dp(4).toFloat()
             addView(burger, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(56)))
+            addView(android.view.View(this@MainActivity).apply { background = LogoDrawable(android.graphics.Color.WHITE) }, LinearLayout.LayoutParams(dp(38), dp(28)).apply { rightMargin = dp(10) })
             addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
 
         content = android.widget.FrameLayout(this)
 
         // output panel (shown when there is something to say)
+        val msgPair = Theme.ORANGE to Theme.PINK
         val clear = label("✕", 16f, cSub).apply { setPadding(dp(14), dp(6), dp(14), dp(6)); isClickable = true; setOnClickListener { out.text = "" } }
         val statusHead = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
-            addView(label("Message", 12f, cSub, true).apply { setPadding(dp(14), 0, 0, 0) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(label("MESSAGE", 11f, Theme.accentText(msgPair), true).apply { setPadding(dp(18), dp(4), 0, 0); letterSpacing = 0.1f }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(clear)
         }
-        val outScroll = ScrollView(this).apply { addView(out); setPadding(dp(14), 0, dp(14), dp(10)) }
+        val outScroll = ScrollView(this).apply { addView(out); setPadding(dp(18), 0, dp(14), dp(10)) }
         statusPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(cBar); visibility = android.view.View.GONE
+            orientation = LinearLayout.VERTICAL; visibility = android.view.View.GONE
+            background = CardDrawable(cCard, msgPair.first, msgPair.second, dp(16).toFloat(), density)
             addView(statusHead)
             addView(outScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(200)))
         }
@@ -1226,35 +1303,45 @@ class MainActivity : Activity() {
         })
 
         val main = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(cBg)
+            orientation = LinearLayout.VERTICAL
             addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            addView(statusPanel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(statusPanel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(10), dp(4), dp(10), dp(10)) })
         }
 
-        // side menu
+        // side menu: a gradient header with the logo, the light mode switch, then the sections
         scrim = android.view.View(this).apply { setBackgroundColor(0x99000000.toInt()); alpha = 0f; visibility = android.view.View.GONE; setOnClickListener { closeDrawer() } }
-        drawerPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setBackgroundColor(cBar)
-            isClickable = true
-            addView(label("Epinephro", 22f, cText, true).apply { setPadding(dp(24), dp(28), dp(16), dp(4)) })
-            addView(label("Defaults below apply to every game unless you change them in the game's own settings (press and hold a game).", 12f, cSub).apply { setPadding(dp(24), 0, dp(20), dp(8)) })
-            addView(drawerItem("Games", "games"))
-            addView(drawerHeader("Default settings"))
-            addView(drawerItem("Graphics", "graphics"))
-            addView(drawerItem("EpiShaders", "epi"))
-            addView(drawerItem("Controls", "pad"))
-            addView(drawerItem("Frame generation", "framegen"))
-            addView(drawerItem("Device", "device"))
-            addView(drawerItem("Driver", "driver"))
-            addView(drawerHeader("More"))
-            addView(drawerItem("Tools and logs", "tools"))
-            addView(drawerItem("Diagnostics", "diag"))
+        val menuHead = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = BarDrawable(Theme.barA, Theme.barB, density)
+            setPadding(dp(22), dp(30), dp(20), dp(22))
+            addView(android.view.View(this@MainActivity).apply { background = LogoDrawable(android.graphics.Color.WHITE) }, LinearLayout.LayoutParams(dp(84), dp(58)))
+            addView(label("Epinephro", 26f, android.graphics.Color.WHITE, true).apply { setPadding(0, dp(10), 0, dp(2)) })
+            addView(label("Defaults below apply to every game unless you change them in the game's own settings (press and hold a game).", 12f, 0xE6FFFFFF.toInt()))
         }
-        val drawerScroll = ScrollView(this).apply { addView(drawerPanel); setBackgroundColor(cBar) }
+        drawerPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            isClickable = true
+            addView(menuHead, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            lightRow(this)
+            val lp = { LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(8), dp(1), dp(8), dp(1)) } }
+            addView(drawerItem("Games", "games"), lp())
+            addView(drawerHeader("Default settings"))
+            addView(drawerItem("Graphics", "graphics"), lp())
+            addView(drawerItem("EpiShaders", "epi"), lp())
+            addView(drawerItem("Controls", "pad"), lp())
+            addView(drawerItem("Frame generation", "framegen"), lp())
+            addView(drawerItem("Device", "device"), lp())
+            addView(drawerItem("Driver", "driver"), lp())
+            addView(drawerHeader("More"))
+            addView(drawerItem("Tools and logs", "tools"), lp())
+            addView(drawerItem("Diagnostics", "diag"), lp())
+            setPadding(0, 0, 0, dp(24))
+        }
+        val drawerScroll = ScrollView(this).apply { addView(drawerPanel); background = BackdropDrawable(cBg, density); elevation = dp(16).toFloat() }
 
         val root = android.widget.FrameLayout(this).apply {
-            setBackgroundColor(cBg)
+            background = BackdropDrawable(cBg, density)
             addView(main, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(scrim, android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(drawerScroll, android.widget.FrameLayout.LayoutParams(dp(290), ViewGroup.LayoutParams.MATCH_PARENT))
@@ -1264,13 +1351,18 @@ class MainActivity : Activity() {
         drawerPanel.translationX = 0f
         drawerSlide = drawerScroll
 
-        setScope(null)
+        // after a switch between dark and light the same page comes back
+        val restored = savedInstanceState?.getString("page")
+        if (restored != null) page = restored
+        setScope(if (page.startsWith("game:")) page.removePrefix("game:") else null)
         buildPage()
 
-        val auto = intent?.getStringExtra("launch")
-        if (auto != null) autoLaunch(auto, intent?.getStringExtra("mode"))
-        val play = intent?.getStringExtra("play")
-        if (play != null) playGame(play)
+        if (savedInstanceState == null) {      // not again when the screen is only being rebuilt
+            val auto = intent?.getStringExtra("launch")
+            if (auto != null) autoLaunch(auto, intent?.getStringExtra("mode"))
+            val play = intent?.getStringExtra("play")
+            if (play != null) playGame(play)
+        }
     }
 
     private var drawerSlide: android.view.View? = null

@@ -62,6 +62,8 @@ class FileManagerActivity : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Theme.load(this)
+        setTheme(Theme.styleRes())          // same dark or light mode as the main screen
         super.onCreate(savedInstanceState)
         title = "File manager"
         root = filesDir.canonicalFile
