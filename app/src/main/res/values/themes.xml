@@ -9,10 +9,9 @@
     </style>
     <style name="Theme.Epi.Light" parent="@android:style/Theme.DeviceDefault.Light">
         <item name="android:colorAccent">#FFB61FD9</item>
-        <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowBackground">@color/epi_bg_light</item>
         <item name="android:colorBackground">@color/epi_bg_light</item>
     </style>
-    <color name="epi_bg_dark">#FF0E0A1A</color>
-    <color name="epi_bg_light">#FFFAF6FF</color>
+    <color name="epi_bg_dark">#FF101318</color>
+    <color name="epi_bg_light">#FFF2F3F7</color>
 </resources>
