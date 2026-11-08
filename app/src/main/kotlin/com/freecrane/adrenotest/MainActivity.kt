@@ -788,7 +788,8 @@ class MainActivity : Activity() {
                 }
                 box.addView(row)
             } else if (p.type == "bool" || p.ui == "checkbox") {
-                val sw = android.widget.Switch(this).apply { text = p.label; setTextColor(cText); isChecked = cur[0] != 0.0; setPadding(0, dp(8), 0, dp(8)) }                sw.setOnCheckedChangeListener { _, on -> Epi.setValue(this, e.id, p.name, doubleArrayOf(if (on) 1.0 else 0.0)) }
+                val sw = android.widget.Switch(this).apply { text = p.label; setTextColor(cText); isChecked = cur[0] != 0.0; setPadding(0, dp(8), 0, dp(8)) }
+                sw.setOnCheckedChangeListener { _, on -> Epi.setValue(this, e.id, p.name, doubleArrayOf(if (on) 1.0 else 0.0)) }
                 box.addView(sw)
             } else {
                 val comps = p.rows.coerceIn(1, 4)
@@ -802,7 +803,8 @@ class MainActivity : Activity() {
                     fun fmt(v: Double) = if (isInt) v.toLong().toString() else "%.3g".format(java.util.Locale.US, v)
                     val title = p.label + (if (comps > 1) " (${names[ci]})" else "")
                     val head = label("$title: ${fmt(v0)}", 13f, cText).apply { setPadding(0, dp(8), 0, 0) }
-                    val bar = android.widget.SeekBar(this).apply { max = n; progress = Math.round((v0 - mn) / st).toInt().coerceIn(0, n) }                    fun valueAt(pr: Int) = (mn + pr * st).coerceIn(mn, mx)
+                    val bar = android.widget.SeekBar(this).apply { max = n; progress = Math.round((v0 - mn) / st).toInt().coerceIn(0, n) }
+                    fun valueAt(pr: Int) = (mn + pr * st).coerceIn(mn, mx)
                     bar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
                         override fun onProgressChanged(sb: android.widget.SeekBar?, pr: Int, user: Boolean) { head.text = "$title: ${fmt(valueAt(pr))}" }
                         override fun onStartTrackingTouch(sb: android.widget.SeekBar?) { }
