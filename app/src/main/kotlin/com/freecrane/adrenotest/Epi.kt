@@ -19,7 +19,7 @@ object Epi {
             Effect("LumaSharpen", "LumaSharpen", "Sharpens the picture without making edges glow"),
             Effect("CAS", "AMD CAS", "AMD's contrast adaptive sharpening"))),
         Group("Anti-aliasing", listOf(
-            Effect("FXAA", "FXAA (EpiShaders)", "Smooths jagged edges, a ReShade version"),
+            Effect("FXAA", "FXAA", "Smooths jagged edges, a ReShade version"),
             Effect("SMAA", "SMAA", "Sharper anti-aliasing that costs more"))),
         Group("Colour", listOf(
             Effect("FakeHDR", "HDR", "Fake HDR: brighter highlights, deeper shadows"),

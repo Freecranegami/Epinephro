@@ -1,6 +1,27 @@
-v1.0-beta
-Epinephro Beta 1.0
+v2.0-beta
+Beta 2.0
 new
-First public beta. Only the main app is attached (no test game APK). Package name: com.freecrane.epinephro.
+Second public beta. Only the main app is attached. Package name: com.freecrane.epinephro (installs over Beta 1.0).
 
-Experimental: tested on one Adreno 619 phone running Android 13. See the README for what it does.
+Still experimental. See the README for what the app does.
+
+## New
+
+- **Material 3 look, dark and light mode.** A redesigned app with Material 3 parts. Light mode is one switch in the menu and applies to the whole app. Switch cards are colour-coded per section.
+- **Driver section.** The Vulkan driver and OpenGL via ANGLE now live on their own page in the menu.
+- **OpenGL games through ANGLE (basic).** Lets OpenGL ES games run on the Vulkan driver. GTA San Andreas runs.
+- **Pipeline cache.** Saves compiled shaders per game and per driver, so later launches stutter less. A cache manager shows the space used and deletes caches.
+- **Sustained performance mode.** Asks Android to keep clocks steady instead of throttling.
+- **Performance overlay.** A small draggable panel with FPS, battery use (watts) and CPU temperature. Has its own switch.
+- **Ignore notch.** Draws the game under the camera cut-out to use the whole screen.
+- **Remove game.** Deletes a game and everything the app stored for it: files, OBB, saves, settings and shader cache. It asks first and shows the space it frees.
+- **Lighter FSR.** Half-precision FSR 1 upscaling (own switch) and the sharpening pass is skipped at 0 %.
+- **Less overhead.** Light mode (diagnostics off) is now the default and the shim stays out of the game's way. Turn it off to record a Guest log.
+- **Better game file handling.** Fixes for OBB and data folders (double slashes, more folder layouts).
+- **FXAA** is now only an EpiShaders effect (the app's own FXAA is removed).
+- **GPL-3.0** licence in the README.
+
+## Known limits
+
+- **ANGLE is very basic.** With OpenGL games, EpiShaders, custom resolution and upscaling (SGSR / FSR) do not work yet. Frame generation is untested there.
+- Native Vulkan games remain the best supported.

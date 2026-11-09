@@ -13,8 +13,8 @@ android {
         manifestPlaceholders["appLabel"] = (project.findProperty("appLabel") as String?) ?: "Epinephro Dev"
         minSdk = 26
         targetSdk = 28          // low on purpose: keeps native-library loading permissive
-        versionCode = 4
-        versionName = "1.0-beta1"
+        versionCode = 5
+        versionName = "2.0-beta"
         ndk { abiFilters += "arm64-v8a" }
     }
 
