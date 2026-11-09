@@ -12,6 +12,8 @@ object Tweaks {
 
     fun light(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("light_mode", true)   // on by default: diagnostics cost CPU on every call
     fun setLight(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("light_mode", on).commit() }
+    fun depthDiag(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("depth_diag", false)
+    fun setDepthDiag(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("depth_diag", on).commit() }
 
     // OpenGL ES games through ANGLE (OpenGL ES translated to Vulkan, running on our Vulkan layer and custom driver).
     fun angle(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("angle", false)
@@ -122,6 +124,7 @@ object Tweaks {
             Os.setenv("LAS_LSFG_PERF", if (lsfgQuality(ctx)) "0" else "1", true)
             Os.setenv("LAS_LSFG_FLOW", "%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05), true)
             Os.setenv("LAS_DRS", if (drsLock(ctx)) "1" else "0", true)
+            Os.setenv("LAS_DEPTHDIAG", if (depthDiag(ctx)) "1" else "0", true)
             val up = upscaler(ctx)
             Os.setenv("LAS_SGSR", if (up == 1) "1" else "0", true)
             Os.setenv("LAS_FSR", if (up == 2) "1" else "0", true)
@@ -141,7 +144,7 @@ object Tweaks {
             } else Os.setenv("LAS_PCACHE", "0", true)
             Os.setenv("LAS_PRIO", if (sustained(ctx)) "1" else "0", true)
             Epi.apply(ctx)
-            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; ANGLE ${if (angle(ctx)) "on" else "off"}; pipeline cache ${if (pcache(ctx)) "on" else "off"}; sustained performance ${if (sustained(ctx)) "on" else "off"}; notch ${if (ignoreNotch(ctx)) "ignored" else "kept"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && Lsfg.installed(ctx)) "on" else "off"} (${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
+            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; depth diagnostic ${if (depthDiag(ctx)) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; ANGLE ${if (angle(ctx)) "on" else "off"}; pipeline cache ${if (pcache(ctx)) "on" else "off"}; sustained performance ${if (sustained(ctx)) "on" else "off"}; notch ${if (ignoreNotch(ctx)) "ignored" else "kept"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && Lsfg.installed(ctx)) "on" else "off"} (${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
         } catch (t: Throwable) {
             Log.w("GuestHost", "tweaks failed: $t")
         }

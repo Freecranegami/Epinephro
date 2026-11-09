@@ -58,17 +58,32 @@ DIAGV = {"vkCmdSetViewport": (4, "vkshim_diag_viewport(a1, a2, a3)"),
          "vkCmdSetScissor": (4, "vkshim_diag_scissor(a1, a2, a3)"),
          "vkCmdSetViewportWithCount": (3, "vkshim_diag_viewport_cnt(a1, a2)"),
          "vkCmdSetViewportWithCountEXT": (3, "vkshim_diag_viewport_cnt(a1, a2)"),
-         "vkCmdBeginRenderPass": (3, "vkshim_diag_renderpass(a1)"),
-         "vkCmdBeginRenderPass2": (3, "vkshim_diag_renderpass(a1)"),
-         "vkCmdBeginRenderPass2KHR": (3, "vkshim_diag_renderpass(a1)"),
-         "vkCmdBeginRendering": (2, "vkshim_diag_rendering(a1)"),
-         "vkCmdBeginRenderingKHR": (2, "vkshim_diag_rendering(a1)"),
+         "vkCmdBeginRenderPass": (3, "vkshim_diag_renderpass(a1); vkshim_dd_begin(a1, a2)"),
+         "vkCmdBeginRenderPass2": (3, "vkshim_diag_renderpass(a1); vkshim_dd_begin(a1, 0)"),
+         "vkCmdBeginRenderPass2KHR": (3, "vkshim_diag_renderpass(a1); vkshim_dd_begin(a1, 0)"),
+         "vkCmdBeginRendering": (2, "vkshim_diag_rendering(a1); vkshim_dd_begin_dyn(a1)"),
+         "vkCmdBeginRenderingKHR": (2, "vkshim_diag_rendering(a1); vkshim_dd_begin_dyn(a1)"),
+         "vkCmdEndRenderPass": (1, "vkshim_dd_end()"),
+         "vkCmdEndRenderPass2": (2, "vkshim_dd_end()"),
+         "vkCmdEndRenderPass2KHR": (2, "vkshim_dd_end()"),
+         "vkCmdEndRendering": (1, "vkshim_dd_end()"),
+         "vkCmdEndRenderingKHR": (1, "vkshim_dd_end()"),
          "vkCmdWriteTimestamp": (4, "vkshim_diag_ts_write()"),
          "vkCmdWriteTimestamp2": (4, "vkshim_diag_ts_write()"),
          "vkCmdWriteTimestamp2KHR": (4, "vkshim_diag_ts_write()")}
 DIAGR = {"vkCreateImage": "vkshim_diag_image(a1)", "vkCreateFramebuffer": "vkshim_diag_framebuffer(a1)",
          "vkGetQueryPoolResults": "vkshim_diag_ts_read()"}
+# draw commands (up to 7 register arguments): counted by the depth diagnostic, passed on untouched
+DIAGV8 = {n: "vkshim_dd_draw()" for n in ("vkCmdDraw", "vkCmdDrawIndexed", "vkCmdDrawIndirect", "vkCmdDrawIndexedIndirect",
+          "vkCmdDrawIndirectCount", "vkCmdDrawIndirectCountKHR", "vkCmdDrawIndirectCountAMD",
+          "vkCmdDrawIndexedIndirectCount", "vkCmdDrawIndexedIndirectCountKHR", "vkCmdDrawIndexedIndirectCountAMD")}
+HOOKV = set(DIAGV) | set(DIAGV8)
+# hooks that only the depth diagnostic needs: handed out as the driver's own function unless LAS_DEPTHDIAG is on
+DD_ONLY = set(DIAGV8) | {"vkCmdEndRenderPass", "vkCmdEndRenderPass2", "vkCmdEndRenderPass2KHR", "vkCmdEndRendering", "vkCmdEndRenderingKHR"}
 DIAGP = {"vkCreateInstance": "vkshim_lsfg_instance(a2, r)",
+         "vkCreateImage": "vkshim_dd_image(a1, a3, r)", "vkCreateImageView": "vkshim_dd_view(a1, a3, r)",
+         "vkCreateRenderPass": "vkshim_dd_rp(a1, a3, r, 1)", "vkCreateRenderPass2": "vkshim_dd_rp(a1, a3, r, 2)",
+         "vkCreateRenderPass2KHR": "vkshim_dd_rp(a1, a3, r, 2)", "vkCreateFramebuffer": "vkshim_dd_fb(a1, a3, r)",
          "vkCreateQueryPool": "vkshim_diag_qpool(a1, a3, r)",
          "vkGetQueryPoolResults": "vkshim_diag_qresults(a1, a2, a3, a4, a5, a6, a7, r)"}
 SPOOF = {"vkGetPhysicalDeviceProperties": 0, "vkGetPhysicalDeviceProperties2": 1, "vkGetPhysicalDeviceProperties2KHR": 1}
@@ -222,6 +237,10 @@ lines.append("extern void vkshim_lsfg_instance(long, long); extern void vkshim_l
 lines.append("extern void vkshim_pc_device(long, long); extern long vkshim_pc_pipelines(long, long); extern void vkshim_pc_after(long, long);")
 lines.append("extern long vkshim_pc_create_info(long, long); extern void vkshim_pc_created(long, long, long); extern void vkshim_pc_destroy(long, long);")
 lines.append("extern void vkshim_perf_present(void);")
+lines.append("extern int vkshim_dd_on(void); extern void vkshim_dd_present(void); extern void vkshim_dd_draw(void); extern void vkshim_dd_end(void);")
+lines.append("extern void vkshim_dd_image(long, long, long); extern void vkshim_dd_view(long, long, long); extern void vkshim_dd_rp(long, long, long, long);")
+lines.append("extern void vkshim_dd_fb(long, long, long); extern void vkshim_dd_begin(long, long); extern void vkshim_dd_begin_dyn(long);")
+lines.append("typedef void (*vkshim_f8v)(long, long, long, long, long, long, long, long);")
 lines.append("typedef long (*vkshim_f3)(long, long, long);")
 lines.append("typedef long (*vkshim_f4)(long, long, long, long);")
 lines.append("extern long vkshim_sgsr_images(long, long, long, long, vkshim_f4);")
@@ -241,6 +260,7 @@ for i, n in enumerate(names):
         elif n == "vkQueuePresentKHR":
             lines.append("%s long %s(long a0, long a1) {" % (e, n))
             lines.append("    vkshim_perf_present();")
+            lines.append("    vkshim_dd_present();")
             lines.append("    long r = vkshim_cas_present(a0, a1, (vkshim_f2)vkshim_table[%d]);" % i)
             lines.append("    vkshim_after(%d, (int)r, 1);" % i)
             lines.append("    return r;")
@@ -292,6 +312,11 @@ for i, n in enumerate(names):
         lines.append("    vkshim_pc_destroy(a0, a1);")
         lines.append("    ((vkshim_f4v)vkshim_table[%d])(a0, a1, a2, a3);" % i)
         lines.append("}")
+    elif n in DIAGV8:
+        lines.append("__attribute__((visibility(\"default\"))) void %s(long a0, long a1, long a2, long a3, long a4, long a5, long a6, long a7) {" % n)
+        lines.append("    %s;" % DIAGV8[n])
+        lines.append("    ((vkshim_f8v)vkshim_table[%d])(a0, a1, a2, a3, a4, a5, a6, a7);" % i)
+        lines.append("}")
     elif n in DIAGV:
         lines.append("__attribute__((visibility(\"default\"))) void %s(long a0, long a1, long a2, long a3) {" % n)
         lines.append("    %s;" % DIAGV[n][1])
@@ -326,7 +351,7 @@ lines.append("__attribute__((visibility(\"default\"))) void *vkGetInstanceProcAd
 lines.append("__attribute__((visibility(\"default\"))) void *vkGetDeviceProcAddr(long, const char *);")
 lines.append("static void *const vkshim_wrap[VKSHIM_COUNT] = {")
 for n in names:
-    lines.append("    %s," % ("(void *)" + n if (n in wrapped_set or n in PROC or n in SPOOF or n in CAS_HOOK or n in DIAGV) else "0"))
+    lines.append("    %s," % ("(void *)" + n if (n in wrapped_set or n in PROC or n in SPOOF or n in CAS_HOOK or n in HOOKV) else "0"))
 lines.append("};")
 # In light mode the wrappers that only count, log or take diagnostics are not handed out at all: the game gets the
 # driver's own function and calls it directly, with nothing of ours in between. 1 = always pass through in light
@@ -336,8 +361,10 @@ KEEP = set(CAS_HOOK) | set(SPOOF) | set(PROC) | {"vkCreateGraphicsPipelines", "v
 DRS_ONLY = {"vkCreateQueryPool", "vkGetQueryPoolResults"}
 lines.append("static const unsigned char vkshim_pass[VKSHIM_COUNT] = {")
 for n in names:
-    if n in KEEP or not (n in wrapped_set or n in DIAGV):
+    if n in KEEP or not (n in wrapped_set or n in HOOKV):
         v = 0
+    elif n in DD_ONLY:
+        v = 3
     elif n in DRS_ONLY:
         v = 2
     else:
@@ -352,11 +379,12 @@ lines.append("static int vkshim_drs_on(void) { const char *e = getenv(\"LAS_DRS\
 lines.append("static void vkshim_missing(void);")
 lines.append("static void *vkshim_lookup(const char *n, void *real) {")
 lines.append("    if (!real || !n) return real;")
-lines.append("    static int light = -1, drs = -1;")
-lines.append("    if (light < 0) { light = vkshim_is_light(); drs = vkshim_drs_on(); }")
+lines.append("    static int light = -1, drs = -1, dd = 0;")
+lines.append("    if (light < 0) { dd = vkshim_dd_on(); light = vkshim_is_light() && !dd; drs = vkshim_drs_on(); }")
 lines.append("    for (int i = 0; i < VKSHIM_COUNT; i++)")
 lines.append("        if (vkshim_wrap[i] && !strcmp(n, vkshim_names[i])) {")
 lines.append("            if (light && vkshim_pass[i] && !(vkshim_pass[i] == 2 && drs)) return real;   /* light mode: no wrapper in between */")
+lines.append("            if (vkshim_pass[i] == 3 && !dd) return real;   /* only the depth diagnostic needs this one */")
 lines.append("            /* the system loader does not export every function (extensions, newer core ones); our wrapper would jump to")
 lines.append("             * nothing. Hand out the driver's own function for those. */")
 lines.append("            if (vkshim_table[i] == (void *)vkshim_missing) {")

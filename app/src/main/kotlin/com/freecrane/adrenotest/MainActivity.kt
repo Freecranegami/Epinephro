@@ -450,6 +450,13 @@ class MainActivity : Activity() {
                    else "Light mode OFF: full diagnostics and Guest log, slightly more CPU use. Applies the next time the game starts."
     }
 
+    private fun toggleDepthDiag(out: TextView) {
+        val on = !Tweaks.depthDiag(this)
+        Tweaks.setDepthDiag(this, on)
+        out.text = if (on) "Depth buffer diagnostic ON: play the game for about 2 minutes, then send the Guest log (lines starting with depthdiag:). It changes nothing in the game. Works with Light mode on or off. Applies the next time the game starts."
+                   else "Depth buffer diagnostic OFF. Applies the next time the game starts."
+    }
+
     private fun chooseResolution(out: TextView) {
         val (sw, sh) = Tweaks.screenSize(this)
         val pcts = intArrayOf(100, 90, 80, 75, 66, 50)
@@ -853,6 +860,7 @@ class MainActivity : Activity() {
         action(b, "Device spoof", GpuSpoof.devices[GpuSpoof.deviceIndex(this)].label) { chooseDevice(outView) }
         toggle(b, "Focus guard", "Keeps the game running when the notification shade opens", { FocusGuard.enabled(this) }) { toggleFocusGuard(outView) }
         toggle(b, "Light mode", "No diagnostics, best performance. Turn it OFF to record a Guest log for a bug report", { Tweaks.light(this) }) { toggleLight(outView) }
+        toggle(b, "Depth buffer diagnostic", "Logs whether screen-space effects could use this game's depth. Play 2 minutes, then send the Guest log", { Tweaks.depthDiag(this) }) { toggleDepthDiag(outView) }
     }
 
     private fun addDriver(b: LinearLayout) {
