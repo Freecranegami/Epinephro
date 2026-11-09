@@ -79,6 +79,7 @@ object GuestRuntime {
         Log.i(TAG, "settings: ${id} (${Prefs.gameOnly(app, id).all.size} of its own)")
         GpuSpoof.apply(app)
         Tweaks.apply(app)
+        PerfLog.start(app, try { Drivers.active(app).label } catch (t: Throwable) { "?" })
         Log.i(TAG, "launch step 2 (real): custom driver")
         Log.i(TAG, Util.syncAngle(app, root, Tweaks.angle(app)))
         Util.ensureShim(app, libDir)

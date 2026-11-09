@@ -141,6 +141,9 @@ object GuestLog {
             diagAll.filter { it.contains("timestamps written") }.takeLast(15)
         val diagImages = diagAll.count { it.contains("diag: image ") }
         val diagBig = diagAll.filter { l -> it_big(l) }.take(40)
+        val perfAll = kept.filter { it.contains("GuestHost: perf: ") }
+        kept.removeAll { it.contains("GuestHost: perf: ") }
+        val perfBlock = if (perfAll.isEmpty()) "" else "--- performance (latest totals) ---\n" + perfAll.takeLast(3).joinToString("\n") + "\n--- end of performance ---\n"
         val identity = kept.filter { l -> identityTokens.any { l.contains(it) } }.take(90)
         kept.removeAll { l -> identityTokens.any { l.contains(it) } }
         val diagBlock = if (diagAll.isEmpty()) "" else
@@ -161,7 +164,7 @@ object GuestLog {
         val header = if (start >= 0) "[log since the last game launch$launchedAt, from the $source]"
                      else "[no game launch found, showing the recent log, from the $source]"
         val idBlock = "--- device identity: what the game read and what it was told ---\n" +
-            (if (identity.isEmpty()) "(nothing logged)\n" else identity.joinToString("\n") + "\n") + "--- end of identity ---\n" + diagBlock
+            (if (identity.isEmpty()) "(nothing logged)\n" else identity.joinToString("\n") + "\n") + "--- end of identity ---\n" + perfBlock + diagBlock
         var text = header + "\n" + idBlock + kept.joinToString("\n")
         if (text.length > 22000) {
             // the lines right before the first fatal signal are the game's own last words

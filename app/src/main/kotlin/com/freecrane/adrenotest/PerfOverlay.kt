@@ -40,7 +40,6 @@ object PerfOverlay {
     // Before the game's libraries load: the file the layer counts frames in.
     fun prepare(ctx: Context) {
         try {
-            if (!enabled(ctx)) { android.system.Os.setenv("LAS_PERF_FILE", "", true); return }
             val f = file(ctx)
             RandomAccessFile(f, "rw").use { it.setLength(4096); it.seek(0); it.writeLong(0L) }
             android.system.Os.setenv("LAS_PERF_FILE", f.path, true)
