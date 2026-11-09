@@ -687,9 +687,11 @@ class MainActivity : Activity() {
         if (!sub.isNullOrEmpty()) addView(label(sub, 13f, cSub).apply { setPadding(0, dp(2), 0, 0) })
     }
 
-    private fun action(b: LinearLayout, title: String, sub: String?, onClick: () -> Unit) {
+    private fun action(b: LinearLayout, title: String, sub: String?, danger: Boolean = false, onClick: () -> Unit) {
         val c = card(b, onClick)
-        c.addView(texts(title, sub), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val t = texts(title, sub)
+        if (danger) (t.getChildAt(0) as? TextView)?.setTextColor(if (Theme.light) 0xFFB3261E.toInt() else 0xFFFFB4AB.toInt())
+        c.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         c.addView(android.widget.ImageView(this).apply { setImageResource(R.drawable.ic_chevron); setColorFilter(cSub) }, LinearLayout.LayoutParams(dp(24), dp(24)))
     }
 
@@ -988,7 +990,42 @@ class MainActivity : Activity() {
                     refreshPage()
                 }.setNegativeButton("Cancel", null).show()
         }
+        header(box, "Remove")
+        action(box, "Remove game", "Deletes the game and all its data from the app: files, OBB, saves, settings and shader cache", danger = true) { removeGame(pkg) }
     }
+
+    // asks first (with the space it frees), then deletes in the background and goes back to the games list
+    private fun removeGame(pkg: String) {
+        val name = GameMeta.name(this, pkg)
+        if (guestRunning()) { outView.text = "$name is running. Close the game first, then remove it."; return }
+        Thread {
+            val bytes = GameMeta.size(this, pkg)
+            runOnUiThread {
+                MaterialAlertDialogBuilder(this).setTitle("Remove $name?")
+                    .setMessage("This deletes $name from the app together with everything it stored here: its files and OBB, its saves and data, its settings, its shader cache and its home screen shortcut. About ${Caches.fmt(bytes)} will be freed. This can't be undone.")
+                    .setPositiveButton("Remove") { _, _ -> doRemoveGame(pkg, name) }
+                    .setNegativeButton("Cancel", null).show()
+            }
+        }.start()
+    }
+
+    private fun doRemoveGame(pkg: String, name: String) {
+        showPage("games")       // leave the game's page first, so its settings file is not written again
+        outView.text = "Removing $name..."
+        Thread {
+            val freed = try { GameMeta.remove(this, pkg) } catch (t: Throwable) { -1L }
+            runOnUiThread {
+                outView.text = if (freed >= 0) "Removed $name. Freed ${Caches.fmt(freed)}." else "Couldn't remove $name completely. Try again, or delete its folder in the File manager."
+                refreshPage()
+            }
+        }.start()
+    }
+
+    // true while the game process is on screen; a cached one left over from an earlier game is harmless to delete under
+    private fun guestRunning(): Boolean = try {
+        val am = getSystemService(android.app.ActivityManager::class.java)
+        am?.runningAppProcesses?.any { it.processName == "$packageName:guest" && it.importance <= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE } == true
+    } catch (t: Throwable) { false }
 
     private fun toolsPage(box: LinearLayout) {
         header(box, "Games")

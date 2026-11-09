@@ -107,4 +107,46 @@ object GameMeta {
             true
         } catch (t: Throwable) { false }
     }
+
+    // ----- removing a game -----
+
+    private fun safe(pkg: String) = pkg.isNotEmpty() && pkg != "." && pkg != ".." && !pkg.contains('/')
+
+    // everything the app keeps for one game, except its settings file (a few KB)
+    private fun places(ctx: Context, pkg: String): List<File> =
+        listOf(File(ctx.filesDir, "guests/$pkg"), File(ctx.filesDir, "guestdata/$pkg"), File(ctx.filesDir, "pcache/$pkg"))
+
+    private fun sizeOf(f: File): Long {
+        if (java.nio.file.Files.isSymbolicLink(f.toPath())) return 0L
+        return if (f.isDirectory) (f.listFiles()?.sumOf { sizeOf(it) } ?: 0L) else f.length()
+    }
+
+    fun size(ctx: Context, pkg: String): Long = if (safe(pkg)) places(ctx, pkg).sumOf { sizeOf(it) } else 0L
+
+    // deletes a folder, also the read-only files the importer made; a link is removed, never followed
+    private fun wipe(f: File) {
+        if (!java.nio.file.Files.isSymbolicLink(f.toPath()) && f.isDirectory) {
+            f.setWritable(true)
+            f.listFiles()?.forEach { wipe(it) }
+        }
+        f.delete()
+    }
+
+    // Removes the game and everything the app stored for it: the imported files (APK, OBB, data), the game's saves and
+    // internal data, the shader cache, its own settings, the shader preset, leftovers in the dex cache and its shortcut.
+    // Returns the number of bytes freed. Call from a background thread.
+    fun remove(ctx: Context, pkg: String): Long {
+        if (!safe(pkg)) return 0L
+        val before = size(ctx, pkg)
+        for (d in places(ctx, pkg)) wipe(d)
+        try { ctx.deleteSharedPreferences(Prefs.fileFor(pkg)) } catch (t: Throwable) { }
+        File(ctx.filesDir, "epishaders_preset_" + pkg.replace(Regex("[^A-Za-z0-9_.]"), "_") + ".txt").delete()
+        File(ctx.codeCacheDir, "guestdex").listFiles()?.filter { it.name.contains(pkg) }?.forEach { wipe(it) }
+        try {
+            val sm = ctx.getSystemService(android.content.pm.ShortcutManager::class.java)
+            sm?.disableShortcuts(listOf("game_$pkg"), "This game was removed")
+            sm?.removeDynamicShortcuts(listOf("game_$pkg"))
+        } catch (t: Throwable) { }
+        return before
+    }
 }
