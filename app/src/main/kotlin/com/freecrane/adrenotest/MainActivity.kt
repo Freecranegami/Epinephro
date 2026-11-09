@@ -704,9 +704,11 @@ class MainActivity : Activity() {
         c.background = Theme.toggleBg(pair, sw.isChecked, 0f)      // the switch cards carry the colour
         sw.setOnCheckedChangeListener { _, _ ->
             if (guard) return@setOnCheckedChangeListener
+            holdRefresh()                       // let the switch finish its animation before the page is rebuilt
             flip()
             guard = true; sw.isChecked = get(); guard = false
-            c.background = Theme.toggleBg(pair, sw.isChecked, 0f)
+            // the card's colour fades to the new state
+            c.background = android.graphics.drawable.TransitionDrawable(arrayOf(c.background, Theme.toggleBg(pair, sw.isChecked, 0f))).apply { isCrossFadeEnabled = true; startTransition(250) }
         }
         c.setOnClickListener { sw.toggle() }
         c.isClickable = true
@@ -793,7 +795,7 @@ class MainActivity : Activity() {
                 box.addView(row)
             } else if (p.type == "bool" || p.ui == "checkbox") {
                 val sw = com.google.android.material.materialswitch.MaterialSwitch(this).apply { text = p.label; setTextColor(cText); isChecked = cur[0] != 0.0; setPadding(0, dp(8), 0, dp(8)) }
-                sw.setOnCheckedChangeListener { _, on -> Epi.setValue(this, e.id, p.name, doubleArrayOf(if (on) 1.0 else 0.0)) }
+                sw.setOnCheckedChangeListener { _, on -> holdRefresh(); Epi.setValue(this, e.id, p.name, doubleArrayOf(if (on) 1.0 else 0.0)) }
                 box.addView(sw)
             } else {
                 val comps = p.rows.coerceIn(1, 4)
@@ -1078,8 +1080,15 @@ class MainActivity : Activity() {
         buildPage()
     }
 
+    // A switch animates for a moment. Rebuilding the page during that time replaces it with a new, already finished one,
+    // which looks like a snap (or a stall just before the end). So page refreshes wait until the animation is over.
+    private var holdRefreshUntil = 0L
+    private fun holdRefresh() { holdRefreshUntil = android.os.SystemClock.uptimeMillis() + 600 }
+
     private fun refreshPage() {
         ui.removeCallbacks(refreshRunnable)
+        val wait = holdRefreshUntil - android.os.SystemClock.uptimeMillis()
+        if (wait > 0) { ui.postDelayed(refreshRunnable, wait + 20); return }
         val y = pageScroll?.scrollY ?: 0
         buildPage()
         val sc = pageScroll ?: return
@@ -1236,7 +1245,7 @@ class MainActivity : Activity() {
         }
         sw.isChecked = Theme.light
         row.background = Theme.toggleBg(pair, sw.isChecked, dp(16).toFloat())
-        sw.setOnCheckedChangeListener { _, on -> Theme.setLight(this, on); recreate() }
+        sw.setOnCheckedChangeListener { _, on -> Theme.setLight(this, on); ui.postDelayed({ recreate() }, 350) }   // after the switch has moved
         row.setOnClickListener { sw.toggle() }
         row.addView(texts("Light mode", "Brighter colours, for the whole app"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row.addView(sw)
