@@ -19,6 +19,9 @@
 
 ---
 
+> [!WARNING]
+> **Be careful with online games.** Games run inside Epinephro, not as a normal Play Store install, and they are modified at runtime (a different graphics driver, the layers that add upscalers, shaders and frame generation, spoofed device details). Online and multiplayer games, and anything with anti-cheat, Play Integrity or licence checks, may fail to connect, refuse to start, or **flag the account and ban it**. Don't use an account you can't afford to lose. Offline and single-player games are not affected.
+
 ## ✨ What it does
 
 Epinephro is an Android app that loads other Android games inside its own process and runs them on a **custom Vulkan driver** (such as Mesa's Turnip, or a newer Adreno driver package) instead of the one that came with your phone. It needs no root. It uses [libadrenotools](https://github.com/bylaws/libadrenotools) to swap the driver in.
