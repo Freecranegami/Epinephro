@@ -63,7 +63,6 @@ The game is told its screen is smaller than it really is (the **Resolution** set
 
 - **SGSR 1** (Snapdragon Game Super Resolution): a single-pass upscaler. Flat areas are scaled cheaply; where it detects an edge it does a more careful directional filter. It is the lighter of the two.
 - **FSR 1** (AMD FidelityFX): two passes. **EASU** scales the picture with an edge-adaptive filter into a full-size image, then **RCAS** sharpens it. RCAS strength is a slider; at 0 % the RCAS pass is skipped entirely, which saves a full-screen pass.
-- **FXAA** (optional, before the upscaler): a simple edge anti-aliasing pass on the low-resolution picture.
 - **Stretch to fit / keep ratio:** keep ratio draws the picture with black bars; stretch fills the screen.
 - **Steady resolution:** some games lower their resolution on their own when busy. This setting stops that.
 
@@ -99,8 +98,7 @@ EpiShaders runs **ReShade FX** effects on top of the game's picture. It does not
 ```mermaid
 flowchart LR
     G[Game] --> S[Vulkan layer]
-    S --> F[FXAA, optional]
-    F --> U[SGSR / FSR upscaler]
+    S --> U[SGSR / FSR upscaler]
     U --> E[EpiShaders effects]
     E --> D[Screen]
 ```
