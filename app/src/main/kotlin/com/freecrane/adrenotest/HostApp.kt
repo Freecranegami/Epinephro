@@ -86,6 +86,7 @@ private object GuestSwap : Application.ActivityLifecycleCallbacks {
                 val v = activity.window.decorView
                 Log.i("GuestHost", "resolution: game window is ${v.width}x${v.height}")
             }
+            activity.window.decorView.postDelayed({ Tweaks.applyWindow(activity) }, 1500)
         }
     }
 
@@ -102,6 +103,7 @@ private object GuestSwap : Application.ActivityLifecycleCallbacks {
         try {
             activity.window.decorView.viewTreeObserver.addOnWindowFocusChangeListener { has ->
                 Log.i("GuestHost", "lifecycle: window focus=$has")
+                if (has) Tweaks.applyWindow(activity)   // games set their own cut-out mode late; ours has to be the last word
             }
             activity.registerComponentCallbacks(object : android.content.ComponentCallbacks {
                 override fun onConfigurationChanged(c: android.content.res.Configuration) {

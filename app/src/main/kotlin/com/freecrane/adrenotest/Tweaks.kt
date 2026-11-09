@@ -42,6 +42,7 @@ object Tweaks {
                 val mode = if (android.os.Build.VERSION.SDK_INT >= 30) android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
                            else android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
                 val lp = w.attributes
+                Log.i("GuestHost", "display: notch setting wanted $mode, window has ${lp.layoutInDisplayCutoutMode}")
                 if (lp.layoutInDisplayCutoutMode != mode) {
                     lp.layoutInDisplayCutoutMode = mode
                     w.attributes = lp
