@@ -221,7 +221,7 @@ static int epi_load(void) {
 
 typedef struct {
     int used, failed, mutfmt, hasfl; VkImageFormatListCreateInfo fl;
-    VkSwapchainKHR sc; VkDevice dev; VkFormat fmt; VkExtent2D in, out; uint32_t n, family;
+    VkSwapchainKHR sc; VkDevice dev; VkFormat fmt, ofmt; VkExtent2D in, out; uint32_t n, family;
     VkImage rimg[MAXI], pimg[MAXI]; VkDeviceMemory pmem[MAXI];
     VkImageView pview[MAXI], rview[MAXI]; VkFramebuffer fb[MAXI];
     VkDescriptorSet ds[MAXI]; VkCommandBuffer cmd[MAXI]; VkSemaphore sem[MAXI];
@@ -446,7 +446,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             ST("bind proxy memory", F.BindImageMemory(d, c->pimg[i], c->pmem[i], 0));
             vci.image = c->pimg[i];
             ST("create proxy view", F.CreateImageView(d, &vci, NULL, &c->pview[i]));
-            vci.image = c->rimg[i];
+            vci.image = c->rimg[i]; vci.format = c->ofmt;
             ST("create swapchain view", F.CreateImageView(d, &vci, NULL, &c->rview[i]));
         } else {
             /* slot n: the generated frame (float image the frame generation writes into), plus two inputs for it */
@@ -464,6 +464,8 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             VkImageViewCreateInfo ov = vci; ov.format = VK_FORMAT_R16G16B16A16_SFLOAT; ov.image = c->oimg;
             ST("create generated view", F.CreateImageView(d, &ov, NULL, &c->oview));
         }
+        ici.format = c->ofmt; vci.format = c->ofmt;
+        if (c->ofmt != c->fmt) { ici.flags = 0; ici.pNext = NULL; }
         if (c->fx) {
             ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
             ST("create intermediate image", F.CreateImage(d, &ici, NULL, &c->qimg[i]));
@@ -493,7 +495,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         .maxLod = 0.25f, .borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK };
     ST("create sampler", F.CreateSampler(d, &sci, NULL, &c->samp));
 
-    VkAttachmentDescription ad = { .format = c->fmt, .samples = VK_SAMPLE_COUNT_1_BIT,
+    VkAttachmentDescription ad = { .format = c->ofmt, .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,      /* black bars when the ratio is kept */
         .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED, .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR };
@@ -513,13 +515,13 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
     if (epi_wanted() && epi_load()) {
         /* Direct mode: when there is nothing to scale (same size, no upscaler, no black bars, no frame generation) the effects read the
          * game's images themselves, which saves a whole full-screen copy of the picture. */
-        int direct = c->mode == 3 && !c->fx && !c->lg && c->in.width == c->out.width && c->in.height == c->out.height &&
+        int direct = c->ofmt == c->fmt && c->mode == 3 && !c->fx && !c->lg && c->in.width == c->out.width && c->in.height == c->out.height &&
                      c->rect.offset.x == 0 && c->rect.offset.y == 0 && c->rect.extent.width == c->out.width && c->rect.extent.height == c->out.height;
         uint64_t srcs[MAXI];
         for (uint32_t i = 0; i < n; i++) srcs[i] = (uint64_t)c->pimg[i];
         void *phys = vkshim_phys_of(d), *gipa = vkshim_real_proc("vkGetInstanceProcAddr");
         c->epi = (phys && gipa && g_inst) ? EP.create(getenv("LAS_EPI_ROOT"), getenv("LAS_EPI_PRESET"), gipa, g_inst, phys, d,
-                                                      c->out.width, c->out.height, (int)c->fmt, (void *)c->rp, direct ? srcs : NULL, direct ? n : 0) : NULL;
+                                                      c->out.width, c->out.height, (int)c->ofmt, (void *)c->rp, direct ? srcs : NULL, direct ? n : 0) : NULL;
         if (c->epi && !direct) {
             uint64_t im = 0, vw = 0;
             if (EP.input(c->epi, &im, &vw) == 0) c->eview = (VkImageView)vw;
@@ -787,9 +789,13 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
         }
     LOGI("sgsr: game swapchain usage 0x%x, flags 0x%x%s", (unsigned)ci.imageUsage, (unsigned)ci.flags, c->hasfl ? ", with a view format list" : "");
     c->lg = wantLg;
-    c->used = 1; c->dev = dev; c->fmt = ci.imageFormat; c->in = ci.imageExtent; c->out = caps.currentExtent; c->family = family;
+    c->used = 1; c->dev = dev; c->fmt = ci.imageFormat; c->ofmt = ci.imageFormat; c->in = ci.imageExtent; c->out = caps.currentExtent; c->family = family;
 
+    /* ANGLE builds its swapchain as 16-bit RGB565 when the game asks for a 565 surface. The effects need an 8-bit one; our own full-size
+     * swapchain is the one the screen gets, so it can be 8-bit while the game keeps rendering into its 565 proxy images. */
+    if (wantEpi && ci.imageFormat == VK_FORMAT_R5G6B5_UNORM_PACK16) { c->ofmt = VK_FORMAT_R8G8B8A8_UNORM; LOGI("sgsr: the game's swapchain is 16-bit (RGB565), the screen's is 8-bit for the effects"); }
     VkSwapchainCreateInfoKHR rci = ci;
+    rci.imageFormat = c->ofmt;
     rci.imageExtent = caps.currentExtent;
     rci.flags = 0;
     rci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;

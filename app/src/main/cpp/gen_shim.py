@@ -237,6 +237,7 @@ lines.append("extern void vkshim_lsfg_instance(long, long); extern void vkshim_l
 lines.append("extern void vkshim_pc_device(long, long); extern long vkshim_pc_pipelines(long, long); extern void vkshim_pc_after(long, long);")
 lines.append("extern long vkshim_pc_create_info(long, long); extern void vkshim_pc_created(long, long, long); extern void vkshim_pc_destroy(long, long);")
 lines.append("extern void vkshim_perf_present(void);")
+lines.append("extern int vkshim_sgsr_enabled(void);")
 lines.append("extern int vkshim_dd_on(void); extern void vkshim_dd_present(void); extern void vkshim_dd_draw(void); extern void vkshim_dd_end(void);")
 lines.append("extern void vkshim_dd_image(long, long, long); extern void vkshim_dd_view(long, long, long); extern void vkshim_dd_rp(long, long, long, long);")
 lines.append("extern void vkshim_dd_fb(long, long, long); extern void vkshim_dd_begin(long, long); extern void vkshim_dd_begin_dyn(long);")
@@ -262,6 +263,9 @@ for i, n in enumerate(names):
             lines.append("    vkshim_perf_present();")
             lines.append("    vkshim_dd_present();")
             lines.append("    long r = vkshim_cas_present(a0, a1, (vkshim_f2)vkshim_table[%d]);" % i)
+            # The shim hides the screen's rotation from the game, so the system answers SUBOPTIMAL to every present. That is a success code,
+            # but ANGLE treats it as "rebuild the swapchain" and does so on every frame. Report plain success.
+            lines.append("    if (r == 1000001003 && vkshim_sgsr_enabled()) r = 0;")
             lines.append("    vkshim_after(%d, (int)r, 1);" % i)
             lines.append("    return r;")
         elif n == "vkDestroySwapchainKHR":
