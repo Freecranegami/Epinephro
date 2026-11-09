@@ -21,6 +21,7 @@ object GuestRuntime {
 
     class Guest(
         val pkg: String,
+        val id: String,       // the folder / settings name of this copy of the game (the package name for the first copy)
         val apk: File,
         val ai: ApplicationInfo,
         val res: Resources,
@@ -63,18 +64,19 @@ object GuestRuntime {
     }
 
     @Synchronized
-    fun prepare(app: Context, pkg: String): Guest {
+    fun prepare(app: Context, id: String): Guest {
+        val pkg = id.substringBefore('@')     // the game's real package name; copies of a game are "<package>@<n>"
         current?.let {
-            if (it.pkg == pkg) return it
-            throw IllegalStateException("this process already runs ${it.pkg}")
+            if (it.id == id) return it
+            throw IllegalStateException("this process already runs ${it.id}")
         }
-        val root = File(app.filesDir, "guests/$pkg")
+        val root = File(app.filesDir, "guests/$id")
         val apk = File(root, "base.apk")
         val libDir = File(root, "lib")
-        if (!apk.exists()) throw IllegalStateException("game not imported: $pkg")
+        if (!apk.exists()) throw IllegalStateException("game not imported: $id")
 
-        Prefs.scope = pkg                 // this game's own settings, with the defaults behind them
-        Log.i(TAG, "settings: ${pkg} (${Prefs.gameOnly(app, pkg).all.size} of its own)")
+        Prefs.scope = id                  // this game's own settings, with the defaults behind them
+        Log.i(TAG, "settings: ${id} (${Prefs.gameOnly(app, id).all.size} of its own)")
         GpuSpoof.apply(app)
         Tweaks.apply(app)
         Log.i(TAG, "launch step 2 (real): custom driver")
@@ -141,7 +143,7 @@ object GuestRuntime {
         } catch (t: Throwable) { Log.w(TAG, "could not set the split names: $t") }
         Log.i(TAG, "split names: " + names.joinToString(","))
         ai.nativeLibraryDir = libDir.path
-        ai.dataDir = File(app.filesDir, "guestdata/$pkg").apply { mkdirs() }.path
+        ai.dataDir = File(app.filesDir, "guestdata/$id").apply { mkdirs() }.path
         val res = pm.getResourcesForApplication(ai)
         try {
             Log.i(TAG, "assets seen by the game: " +
@@ -166,7 +168,7 @@ object GuestRuntime {
         Log.i(TAG, "native.txt: lib=${nativeValue(root, "lib") ?: "-"} " +
             "func=${nativeValue(root, "func") ?: "-"} activity=${nativeValue(root, "activity") ?: "-"}")
 
-        val g = Guest(pkg, apk, ai, res, loader, File(root, "obb").apply { mkdirs() })
+        val g = Guest(pkg, id, apk, ai, res, loader, File(root, "obb").apply { mkdirs() })
         current = g
         startGameApplication(app, g)
         return g

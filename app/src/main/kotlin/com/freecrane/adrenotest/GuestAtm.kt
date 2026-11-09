@@ -46,7 +46,7 @@ object GuestAtm {
                     val target = if (cn.className.startsWith(".")) g.pkg + cn.className else cn.className
                     val n = Intent(it)
                     n.component = ComponentName(HostApp.instance.packageName, GuestProxyActivity::class.java.name)
-                    n.putExtra(GuestRuntime.EXTRA_PKG, g.pkg)
+                    n.putExtra(GuestRuntime.EXTRA_PKG, g.id)
                     n.putExtra(GuestRuntime.EXTRA_ACTIVITY, target)
                     Log.i(TAG, "activity start: ${cn.flattenToShortString()} -> game activity $target")
                     a[i] = n

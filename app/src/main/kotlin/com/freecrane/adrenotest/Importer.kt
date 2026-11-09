@@ -353,9 +353,15 @@ object Importer {
         val pkg = pi.packageName
 
         // lay out the game's folder
-        val dir = File(root, pkg)
+        // Importing a game that is already there makes another copy: the first keeps the package name as its folder, the next ones
+        // are "<package>@1", "<package>@2", and show as "<name> (1)", "(2)". Nothing of the existing copies is touched.
+        var copy = 0
+        while (File(root, if (copy == 0) pkg else "$pkg@$copy").exists()) copy++
+        val id = if (copy == 0) pkg else "$pkg@$copy"
+        val dir = File(root, id)
         dir.deleteRecursively()
         dir.mkdirs()
+        if (copy > 0) File(dir, "name.txt").writeText("${label.trim()} ($copy)")
         val baseDst = File(dir, "base.apk")
         move(b, baseDst)
         val splitDir = File(dir, "splits").apply { mkdirs() }
@@ -427,6 +433,7 @@ object Importer {
         val sb = StringBuilder()
         sb.append("Imported: $label\n")
         sb.append("Package: $pkg\n")
+        if (copy > 0) sb.append("This is copy $copy of the game; the earlier ones are unchanged.\n")
         sb.append("Version: ${pi.versionName}\n")
         sb.append("Target SDK: ${ai.targetSdkVersion}\n")
         sb.append("Files: base APK + ${splitDsts.size} split(s)\n")

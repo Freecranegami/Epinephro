@@ -107,7 +107,7 @@ class GuestActivity : Activity() {
         val loader = DexClassLoader(
             dexPath, dexOut.path, libDir.path, Activity::class.java.classLoader)
 
-        guestPkg = pkg
+        guestPkg = pkg.substringBefore('@')   // copies of a game are "<package>@<n>"
         guestApk = apk
         guestObb = obbDir
         guestAi = ai
