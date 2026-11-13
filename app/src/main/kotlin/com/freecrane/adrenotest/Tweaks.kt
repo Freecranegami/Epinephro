@@ -71,7 +71,16 @@ object Tweaks {
                 val mode = if (android.os.Build.VERSION.SDK_INT >= 30) android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
                            else android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
                 val lp = w.attributes
-                Log.i("GuestHost", "display: notch setting wanted $mode, window has ${lp.layoutInDisplayCutoutMode}")
+                Log.i("GuestHost", "display: notch setting wanted $mode, window has ${lp.layoutInDisplayCutoutMode}, flags 0x${Integer.toHexString(lp.flags)}")
+                // The cut-out mode only counts when the window is laid out over the whole screen: some games leave that to the system bars.
+                val want = android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                if (lp.flags and want != want) { lp.flags = lp.flags or want; w.attributes = lp }
+                if (android.os.Build.VERSION.SDK_INT >= 30) try { w.setDecorFitsSystemWindows(false) } catch (_: Throwable) { }
+                try {
+                    val b = if (android.os.Build.VERSION.SDK_INT >= 30) a.windowManager.currentWindowMetrics.bounds else null
+                    val dm = android.util.DisplayMetrics(); @Suppress("DEPRECATION") a.windowManager.defaultDisplay.getRealMetrics(dm)
+                    w.decorView.post { Log.i("GuestHost", "display: window ${w.decorView.width}x${w.decorView.height}, screen ${dm.widthPixels}x${dm.heightPixels}" + (if (b != null) ", window bounds ${b.width()}x${b.height()}" else "")) }
+                } catch (_: Throwable) { }
                 if (lp.layoutInDisplayCutoutMode != mode) {
                     lp.layoutInDisplayCutoutMode = mode
                     w.attributes = lp
