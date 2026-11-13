@@ -516,6 +516,38 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun chooseTurnipMode(out: TextView) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Turnip render mode")
+            .setSingleChoiceItems(Tweaks.tuModes.toTypedArray(), Tweaks.tuMode(this)) { d, which ->
+                Tweaks.setTuMode(this, which)
+                d.dismiss()
+                out.text = "Turnip render mode: ${Tweaks.tuModes[which]}. Sets TU_DEBUG for the Turnip driver only (the Qualcomm drivers ignore it). " +
+                    "Applies the next time the game starts. If the game glitches or runs slower, set it back to Auto."
+            }
+            .show()
+    }
+
+    private fun editTurnipEnv(out: TextView) {
+        val et = android.widget.EditText(this).apply {
+            setText(Tweaks.tuExtra(this@MainActivity))
+            hint = "TU_DEBUG=noubwc\nFD_MESA_DEBUG=..."
+            setHorizontalScrollBarEnabled(false)
+            minLines = 3
+            gravity = android.view.Gravity.TOP
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Turnip environment variables")
+            .setMessage("One NAME=VALUE per line. Only the Turnip driver reads them. A gmem/sysmem choice above is added to TU_DEBUG.")
+            .setView(et)
+            .setPositiveButton("Save") { _, _ ->
+                Tweaks.setTuExtra(this, et.text.toString())
+                out.text = "Turnip variables saved. Applies the next time the game starts."
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun chooseRcas(out: TextView) {
         val bar = M3Seek(this, 100, Tweaks.rcasPercent(this@MainActivity)) { }
         val label = TextView(this).apply { setPadding(48, 32, 48, 0) }
@@ -867,6 +899,8 @@ class MainActivity : Activity() {
         header(b, "Driver")
         val drv = try { Drivers.list(this).firstOrNull { it.id == Drivers.selectedId(this) }?.label } catch (t: Throwable) { null }
         action(b, "Vulkan driver", drv ?: "Bundled") { chooseDriver(outView) }
+        action(b, "Turnip render mode", Tweaks.tuModes[Tweaks.tuMode(this)].substringBefore(" (")) { chooseTurnipMode(outView) }
+        action(b, "Turnip environment variables", Tweaks.tuExtra(this).lines().count { it.contains('=') }.let { if (it == 0) "None" else "$it set" }) { editTurnipEnv(outView) }
         toggle(b, "OpenGL ES via ANGLE", "For games that use OpenGL ES instead of Vulkan: translates it to Vulkan so it runs on the custom driver and the layer. Experimental. The first start afterwards rewrites the game's libraries.",
             { Tweaks.angle(this) }) { Tweaks.setAngle(this, !Tweaks.angle(this)); refreshPage() }
         header(b, "Performance")

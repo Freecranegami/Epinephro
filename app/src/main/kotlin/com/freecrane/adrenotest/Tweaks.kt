@@ -15,6 +15,35 @@ object Tweaks {
     fun depthDiag(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("depth_diag", false)
     fun setDepthDiag(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("depth_diag", on).commit() }
 
+    // Turnip (open-source Mesa driver) settings, handed over as environment variables before the driver loads.
+    // Render mode: 0 = the driver decides, 1 = GMEM (tiled, on-chip memory), 2 = sysmem (direct, no tiling).
+    // Extra variables: one NAME=VALUE per line (for example TU_DEBUG=noubwc, FD_MESA_DEBUG=...). Only Turnip reads them.
+    val tuModes = listOf("Auto (driver decides)", "GMEM (tiled rendering)", "Sysmem (direct rendering)")
+    fun tuMode(ctx: Context): Int = Prefs.get(ctx).getInt("tu_mode", 0).coerceIn(0, 2)
+    fun setTuMode(ctx: Context, i: Int) { Prefs.get(ctx).edit().putInt("tu_mode", i).commit() }
+    fun tuExtra(ctx: Context): String = Prefs.get(ctx).getString("tu_extra", "") ?: ""
+    fun setTuExtra(ctx: Context, t: String) { Prefs.get(ctx).edit().putString("tu_extra", t).commit() }
+
+    private fun applyTurnipEnv(ctx: Context) {
+        val vars = LinkedHashMap<String, String>()
+        for (raw in tuExtra(ctx).lines()) {
+            val l = raw.trim()
+            val i = l.indexOf('=')
+            if (i <= 0) continue
+            val k = l.substring(0, i).trim()
+            if (!Regex("[A-Za-z_][A-Za-z0-9_]*").matches(k) || k.startsWith("LAS_") || k == "LD_PRELOAD" || k == "LD_LIBRARY_PATH") continue
+            vars[k] = l.substring(i + 1).trim()
+        }
+        val flag = when (tuMode(ctx)) { 1 -> "gmem"; 2 -> "sysmem"; else -> null }
+        if (flag != null) {
+            val cur = vars["TU_DEBUG"]?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() && it != "gmem" && it != "sysmem" } ?: emptyList()
+            vars["TU_DEBUG"] = (cur + flag).joinToString(",")
+        }
+        for ((k, v) in vars) Os.setenv(k, v, true)
+        Log.i("GuestHost", "turnip env: " + (if (vars.isEmpty()) "none" else vars.entries.joinToString(" ") { "${it.key}=${it.value}" }) +
+            " (only the Turnip driver reads these)")
+    }
+
     // OpenGL ES games through ANGLE (OpenGL ES translated to Vulkan, running on our Vulkan layer and custom driver).
     fun angle(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("angle", false)
     fun setAngle(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("angle", on).commit() }
@@ -116,6 +145,7 @@ object Tweaks {
         try {
             val l = light(ctx)
             Os.setenv("LAS_LIGHT", if (l) "1" else "0", true)
+            applyTurnipEnv(ctx)
             val rw = resW(ctx); val rh = resH(ctx)
             Os.setenv("LAS_RES_W", if (rw > 0 && rh > 0) rw.toString() else "0", true)
             Os.setenv("LAS_RES_H", if (rw > 0 && rh > 0) rh.toString() else "0", true)
