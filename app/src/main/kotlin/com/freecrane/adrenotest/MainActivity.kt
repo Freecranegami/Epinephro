@@ -68,6 +68,7 @@ class MainActivity : Activity() {
     private val driverRequest = 1002
     private val lsfgRequest = 1003
     private val iconRequest = 1004
+    private val lutRequest = 1005
     private var iconPkg: String? = null
 
     private var surface: Surface? = null
@@ -177,6 +178,17 @@ class MainActivity : Activity() {
                 val ok = GameMeta.setIconFrom(this, pkg, u)
                 outView.text = if (ok) "Icon changed." else "Couldn't read that picture."
                 refreshPage()
+            }
+            return
+        }
+        if (requestCode == lutRequest) {
+            val u = if (resultCode == RESULT_OK) data?.data else null
+            if (u != null) {
+                outView.text = "Importing the LUT picture..."
+                Thread {
+                    val msg = Epi.importLut(this, u)
+                    runOnUiThread { outView.text = msg; refreshPage() }
+                }.start()
             }
             return
         }
@@ -853,6 +865,21 @@ class MainActivity : Activity() {
                 }
             }
             if (p.tip.isNotEmpty() && p.tip.length <= 110) box.addView(label(p.tip, 11f, cSub))
+        }
+        if (e.id == "LUT") {
+            val has = Epi.lutFile(this) != null
+            box.addView(label(if (has) "Your LUT picture: ${Epi.lutTile(this)} tiles of ${Epi.lutTile(this)}x${Epi.lutTile(this)}" else "Using the bundled LUT picture", 13f, cText).apply { setPadding(0, dp(12), 0, 0) })
+            val imp = label("Import LUT picture", 13f, cAccent).apply { setPadding(0, dp(6), 0, dp(2)); isClickable = true }
+            imp.setOnClickListener {
+                outView.text = "Pick a LUT strip: one row of N tiles of N x N pixels (256x16, 1024x32 or 4096x64)."
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }, lutRequest)
+            }
+            box.addView(imp)
+            if (has) {
+                val rm = label("Go back to the bundled LUT", 13f, cAccent).apply { setPadding(0, dp(6), 0, dp(2)); isClickable = true }
+                rm.setOnClickListener { Epi.clearLut(this); outView.text = "Using the bundled LUT picture."; refreshPage() }
+                box.addView(rm)
+            }
         }
         val reset = label("Reset this effect's settings", 13f, cAccent).apply { setPadding(0, dp(12), 0, dp(2)); isClickable = true }
         reset.setOnClickListener { Epi.resetEffect(this, e.id); refreshPage() }

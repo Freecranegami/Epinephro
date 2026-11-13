@@ -99,6 +99,63 @@ object Epi {
         return r
     }
 
+    // ---- the user's own LUT picture ----
+    // A LUT strip is N tiles of N x N pixels side by side, so its width is N x N and its height N (16: 256x16, 32: 1024x32,
+    // 64: 4096x64). The picture is kept in the app's files; the choice (file name, tile size) lives in the settings so each
+    // game can have its own. Before the effects compile, the bundled lut.png / LUT.fx are swapped for it.
+    fun lutFile(ctx: Context): File? {
+        val n = Prefs.get(ctx).getString("epi_lut_file", null) ?: return null
+        val f = File(File(ctx.filesDir, "epi_luts"), n)
+        return if (f.isFile) f else null
+    }
+    fun lutTile(ctx: Context): Int = Prefs.get(ctx).getInt("epi_lut_tile", 32)
+
+    // Returns a message for the user.
+    fun importLut(ctx: Context, uri: android.net.Uri): String {
+        try {
+            val bmp = ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it) }
+                ?: return "Couldn't read that picture."
+            val w = bmp.width; val h = bmp.height
+            if (h < 8 || h > 64 || w != h * h) {
+                bmp.recycle()
+                return "That picture is ${w}x$h. A LUT strip has N tiles of N x N pixels in one row: 256x16, 1024x32 or 4096x64 " +
+                    "(the usual ReShade LUT, e.g. lut.png). Square 'HALD' pictures and vertical strips aren't supported yet."
+            }
+            val dir = File(ctx.filesDir, "epi_luts").apply { mkdirs() }
+            val name = "lut_" + System.currentTimeMillis() + ".png"
+            File(dir, name).outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bmp.recycle()
+            val old = Prefs.get(ctx).getString("epi_lut_file", null)
+            Prefs.get(ctx).edit().putString("epi_lut_file", name).putInt("epi_lut_tile", h).commit()
+            if (old != null && old != name) try { File(dir, old).delete() } catch (_: Throwable) { }
+            prepareLut(ctx)
+            return "LUT picture imported (${h} tiles of ${h}x$h). Turn on the LUT effect to use it. Applies the next time the game starts."
+        } catch (t: Throwable) { return "Couldn't import the picture: $t" }
+    }
+
+    fun clearLut(ctx: Context) {
+        val old = Prefs.get(ctx).getString("epi_lut_file", null)
+        Prefs.get(ctx).edit().remove("epi_lut_file").remove("epi_lut_tile").commit()
+        if (old != null) try { File(File(ctx.filesDir, "epi_luts"), old).delete() } catch (_: Throwable) { }
+        prepareLut(ctx)
+    }
+
+    // Puts the chosen (or the bundled) LUT picture and tile size where the effect looks for them.
+    fun prepareLut(ctx: Context) {
+        try {
+            val r = ensure(ctx)
+            val custom = lutFile(ctx)
+            val tex = File(r, "Textures/lut.png")
+            tex.parentFile?.mkdirs()
+            if (custom != null) custom.copyTo(tex, overwrite = true)
+            else ctx.assets.open("epishaders/Textures/lut.png").use { i -> tex.outputStream().use { o -> i.copyTo(o, 1 shl 16) } }
+            val fx = ctx.assets.open("epishaders/Shaders/LUT.fx").use { it.readBytes().toString(Charsets.UTF_8) }
+            val n = if (custom != null) lutTile(ctx) else 32
+            File(r, "Shaders/LUT.fx").writeText("#define fLUT_TileSizeXY $n\n#define fLUT_TileAmount $n\n" + fx)
+            cache.remove("LUT")
+        } catch (t: Throwable) { Log.w("GuestHost", "epishaders: LUT setup failed: $t") }
+    }
+
     // The settings of one effect, for the UI. Compiles the effect with ReShade's compiler (a few hundred ms the first time).
     class Param(val name: String, val type: String, val rows: Int, val ui: String, val min: Double?, val max: Double?, val step: Double?,
                 val label: String, val tip: String, val cat: String, val items: List<String>, val def: DoubleArray)
@@ -140,6 +197,10 @@ object Epi {
             val enabled = if (master(ctx)) all.filter { on(ctx, it.id) } else emptyList()
             if (enabled.isEmpty()) { Os.setenv("LAS_EPI", "0", true); return }
             val r = ensure(ctx)
+            if (enabled.any { it.id == "LUT" }) {
+                prepareLut(ctx)
+                Log.i("GuestHost", "epishaders: LUT picture " + (lutFile(ctx)?.let { "imported (${lutTile(ctx)} tiles)" } ?: "bundled"))
+            }
             val pre = File(ctx.filesDir, "epishaders_preset_" + (Prefs.scope ?: "default").replace(Regex("[^A-Za-z0-9_.]"), "_") + ".txt")
             val sb = StringBuilder()
             for (e in enabled) {
