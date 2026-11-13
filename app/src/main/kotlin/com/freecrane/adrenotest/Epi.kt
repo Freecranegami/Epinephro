@@ -110,27 +110,132 @@ object Epi {
     }
     fun lutTile(ctx: Context): Int = Prefs.get(ctx).getInt("epi_lut_tile", 32)
 
-    // Returns a message for the user.
+    // A cube of colours (n x n x n, red varies fastest, then green, then blue; values 0..1, 3 floats each) as a LUT strip
+    // of t tiles of t x t pixels. When t differs from n the cube is resampled (trilinear).
+    private fun cubeToStrip(cube: FloatArray, n: Int, t: Int): android.graphics.Bitmap {
+        fun at(r: Int, g: Int, b: Int, c: Int) = cube[((b * n + g) * n + r) * 3 + c]
+        val px = IntArray(t * t * t)
+        for (bt in 0 until t) for (g in 0 until t) for (r in 0 until t) {
+            val out = IntArray(3)
+            if (t == n) {
+                for (c in 0..2) out[c] = (at(r, g, bt, c).coerceIn(0f, 1f) * 255f + 0.5f).toInt()
+            } else {
+                val fr = r * (n - 1f) / (t - 1f); val fg = g * (n - 1f) / (t - 1f); val fb = bt * (n - 1f) / (t - 1f)
+                val r0 = fr.toInt().coerceAtMost(n - 2); val g0 = fg.toInt().coerceAtMost(n - 2); val b0 = fb.toInt().coerceAtMost(n - 2)
+                val dr = fr - r0; val dg = fg - g0; val db = fb - b0
+                for (c in 0..2) {
+                    var v = 0f
+                    for (i in 0..7) {
+                        val x = i and 1; val y = (i shr 1) and 1; val z = (i shr 2) and 1
+                        val wgt = (if (x == 1) dr else 1 - dr) * (if (y == 1) dg else 1 - dg) * (if (z == 1) db else 1 - db)
+                        v += wgt * at(r0 + x, g0 + y, b0 + z, c)
+                    }
+                    out[c] = (v.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
+                }
+            }
+            px[g * (t * t) + bt * t + r] = (0xFF shl 24) or (out[0] shl 16) or (out[1] shl 8) or out[2]
+        }
+        val bmp = android.graphics.Bitmap.createBitmap(t * t, t, android.graphics.Bitmap.Config.ARGB_8888)
+        bmp.setPixels(px, 0, t * t, 0, 0, t * t, t)
+        return bmp
+    }
+
+    private fun tileFor(n: Int) = if (n in 8..64) n else if (n > 64) 64 else 16
+
+    // An Adobe/Resolve .cube file (3D). Throws IllegalArgumentException with a message for the user.
+    private fun cubeFileToStrip(text: String): android.graphics.Bitmap {
+        var n = 0
+        var lo = floatArrayOf(0f, 0f, 0f); var hi = floatArrayOf(1f, 1f, 1f)
+        var data: FloatArray? = null
+        var k = 0
+        for (raw in text.lineSequence()) {
+            val l = raw.substringBefore('#').trim()
+            if (l.isEmpty()) continue
+            val c0 = l[0]
+            if (c0.isLetter()) {
+                val parts = l.split(Regex("\\s+"))
+                when (parts[0].uppercase()) {
+                    "LUT_3D_SIZE" -> { n = parts.getOrNull(1)?.toIntOrNull() ?: 0; if (n < 2 || n > 129) throw IllegalArgumentException("Unsupported .cube size $n."); data = FloatArray(n * n * n * 3) }
+                    "LUT_1D_SIZE" -> throw IllegalArgumentException("That .cube file is a 1D LUT. Only 3D .cube files (LUT_3D_SIZE) work.")
+                    "DOMAIN_MIN" -> if (parts.size >= 4) lo = floatArrayOf(parts[1].toFloat(), parts[2].toFloat(), parts[3].toFloat())
+                    "DOMAIN_MAX" -> if (parts.size >= 4) hi = floatArrayOf(parts[1].toFloat(), parts[2].toFloat(), parts[3].toFloat())
+                }
+                continue
+            }
+            val d = data ?: throw IllegalArgumentException("The .cube file has colour data before LUT_3D_SIZE.")
+            val parts = l.split(Regex("\\s+"))
+            if (parts.size < 3 || k + 3 > d.size) { if (k + 3 > d.size) continue else throw IllegalArgumentException("Bad line in the .cube file: $l") }
+            for (c in 0..2) {
+                val span = if (hi[c] - lo[c] != 0f) hi[c] - lo[c] else 1f
+                d[k + c] = (parts[c].toFloat() - lo[c]) / span
+            }
+            k += 3
+        }
+        val d = data ?: throw IllegalArgumentException("No LUT_3D_SIZE in the .cube file.")
+        if (k != d.size) throw IllegalArgumentException("The .cube file has ${k / 3} colours but ${n}x${n}x$n = ${n * n * n} were expected.")
+        return cubeToStrip(d, n, tileFor(n))
+    }
+
+    // A Hald CLUT picture: a square picture of side L^3 holding a cube of L^2 per side, red fastest, row by row.
+    private fun haldToStrip(bmp: android.graphics.Bitmap, level: Int): android.graphics.Bitmap {
+        val n = level * level
+        val px = IntArray(bmp.width * bmp.height)
+        bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+        val cube = FloatArray(n * n * n * 3)
+        for (i in 0 until n * n * n) {
+            val c = px[i]
+            cube[i * 3] = ((c shr 16) and 255) / 255f
+            cube[i * 3 + 1] = ((c shr 8) and 255) / 255f
+            cube[i * 3 + 2] = (c and 255) / 255f
+        }
+        return cubeToStrip(cube, n, tileFor(n))
+    }
+
+    private fun displayName(ctx: Context, uri: android.net.Uri): String = try {
+        ctx.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else "" } ?: ""
+    } catch (t: Throwable) { "" }
+
+    // Returns a message for the user. Accepts a LUT strip (N tiles of NxN in one row), a Hald CLUT picture, or a 3D .cube file.
     fun importLut(ctx: Context, uri: android.net.Uri): String {
         try {
-            val bmp = ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it) }
-                ?: return "Couldn't read that picture."
-            val w = bmp.width; val h = bmp.height
-            if (h < 8 || h > 64 || w != h * h) {
-                bmp.recycle()
-                return "That picture is ${w}x$h. A LUT strip has N tiles of N x N pixels in one row: 256x16, 1024x32 or 4096x64 " +
-                    "(the usual ReShade LUT, e.g. lut.png). Square 'HALD' pictures and vertical strips aren't supported yet."
+            val name0 = displayName(ctx, uri)
+            var kind = "strip"
+            var strip: android.graphics.Bitmap? = null
+            val head = ctx.contentResolver.openInputStream(uri)?.use { i -> ByteArray(256).let { b -> String(b, 0, maxOf(0, i.read(b)), Charsets.ISO_8859_1) } } ?: return "Couldn't read that file."
+            val isText = name0.endsWith(".cube", true) || head.contains("LUT_3D_SIZE") || head.contains("LUT_1D_SIZE") || head.contains("DOMAIN_M")
+            if (isText) {
+                kind = ".cube"
+                val bytes = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                if (bytes.size > 64 * 1024 * 1024) return "That file is too big for a LUT."
+                strip = try { cubeFileToStrip(String(bytes, Charsets.UTF_8)) } catch (e: IllegalArgumentException) { return e.message ?: "Couldn't read the .cube file." }
+                  catch (e: NumberFormatException) { return "The .cube file has a value I can't read." }
+            } else {
+                val bmp = ctx.contentResolver.openInputStream(uri)?.use { android.graphics.BitmapFactory.decodeStream(it) }
+                    ?: return "Couldn't read that file as a picture or a .cube LUT."
+                val w = bmp.width; val h = bmp.height
+                if (h in 8..64 && w == h * h) strip = bmp
+                else {
+                    val level = (4..16).firstOrNull { it * it * it == w }
+                    if (w == h && level != null) { kind = "Hald level $level"; strip = haldToStrip(bmp, level); bmp.recycle() }
+                    else {
+                        bmp.recycle()
+                        return "That picture is ${w}x$h. I can use a LUT strip (256x16, 1024x32 or 4096x64), a square Hald CLUT picture " +
+                            "(512x512 is level 8, 216x216 level 6 and so on) or a 3D .cube file."
+                    }
+                }
             }
+            val st = strip!!
+            val t = st.height
             val dir = File(ctx.filesDir, "epi_luts").apply { mkdirs() }
             val name = "lut_" + System.currentTimeMillis() + ".png"
-            File(dir, name).outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-            bmp.recycle()
+            File(dir, name).outputStream().use { st.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            st.recycle()
             val old = Prefs.get(ctx).getString("epi_lut_file", null)
-            Prefs.get(ctx).edit().putString("epi_lut_file", name).putInt("epi_lut_tile", h).commit()
+            Prefs.get(ctx).edit().putString("epi_lut_file", name).putInt("epi_lut_tile", t).commit()
             if (old != null && old != name) try { File(dir, old).delete() } catch (_: Throwable) { }
             prepareLut(ctx)
-            return "LUT picture imported (${h} tiles of ${h}x$h). Turn on the LUT effect to use it. Applies the next time the game starts."
-        } catch (t: Throwable) { return "Couldn't import the picture: $t" }
+            return "LUT imported ($kind, $t tiles of ${t}x$t). Turn on the LUT effect to use it. Applies the next time the game starts."
+        } catch (t: Throwable) { return "Couldn't import that LUT: $t" }
     }
 
     fun clearLut(ctx: Context) {

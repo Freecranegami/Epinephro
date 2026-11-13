@@ -869,10 +869,10 @@ class MainActivity : Activity() {
         if (e.id == "LUT") {
             val has = Epi.lutFile(this) != null
             box.addView(label(if (has) "Your LUT picture: ${Epi.lutTile(this)} tiles of ${Epi.lutTile(this)}x${Epi.lutTile(this)}" else "Using the bundled LUT picture", 13f, cText).apply { setPadding(0, dp(12), 0, 0) })
-            val imp = label("Import LUT picture", 13f, cAccent).apply { setPadding(0, dp(6), 0, dp(2)); isClickable = true }
+            val imp = label("Import LUT (strip, Hald or .cube)", 13f, cAccent).apply { setPadding(0, dp(6), 0, dp(2)); isClickable = true }
             imp.setOnClickListener {
-                outView.text = "Pick a LUT strip: one row of N tiles of N x N pixels (256x16, 1024x32 or 4096x64)."
-                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }, lutRequest)
+                outView.text = "Pick a LUT: a strip picture (256x16, 1024x32 or 4096x64), a Hald CLUT picture, or a 3D .cube file."
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }, lutRequest)
             }
             box.addView(imp)
             if (has) {
