@@ -73,7 +73,7 @@ The game is told its screen is smaller than it really is (the **Resolution** set
 
 The generator is the algorithm of Lossless Scaling's frame generation (LSFG), ported to run here through the work of [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk). The shaders it needs are read from a `Lossless.dll` you provide (this app does not include it). Each game frame is copied, the generator creates an in-between frame, and both go through the same upscaling chain and are presented one after the other. A **Check Lossless.dll** button tests that the shaders compile on your phone. Quality and the optical-flow scale are adjustable.
 
-**Win-FG** is the built-in alternative: an optical-flow frame generator written from published algorithms, with nothing to import. Choose it under *Engine, quality and flow scale*. It runs the same way (copy the frame, generate, present both), so the notes above about GPU cost and delay apply to it too.
+**Win-FG** is the built-in alternative: an optical-flow frame generator written from published algorithms, with nothing to import. Choose it under *Frame generation engine*; it has its own *Win-FG settings* (method, flow detail, camera-motion correction and an optional HUD box), separate from the Lossless Scaling ones. It runs the same way (copy the frame, generate, present both), so the notes above about GPU cost and delay apply to it too.
 
 ### Virtual Xbox 360 controller
 

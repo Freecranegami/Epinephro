@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <stdexcept>
@@ -46,7 +47,9 @@ VkQueue g_queue = VK_NULL_HANDLE;
 VkCommandPool g_pool = VK_NULL_HANDLE;
 VkPhysicalDeviceMemoryProperties g_mem {};
 bool g_ready = false;
-bool g_perf = true;
+winfg::Config g_cfg;
+bool g_hasHud = false;
+float g_hudPct[4] {};   // left, top, right, bottom in percent of the picture
 std::map<int, Ctx *> g_ctx;
 int g_nextId = 1;
 
@@ -139,13 +142,12 @@ void destroyCtx(Ctx *c) {
 
 // returns 0 on success. dll is not used; flowScale and generated are not used either (the engine makes one frame per real frame)
 EXPORT int las_lsfg_init(void *gipa, void *instance, void *phys, void *dev, uint32_t qfam, void *queue,
-                         int perf, float /*flowScale*/, int /*generated*/, int /*hdr*/, const char * /*dll*/, char *err, int errlen) {
+                         int /*perf*/, float /*flowScale*/, int /*generated*/, int /*hdr*/, const char * /*dll*/, char *err, int errlen) {
     try {
         if (g_ready) return 0;
         g_phys = reinterpret_cast<VkPhysicalDevice>(phys);
         g_dev = reinterpret_cast<VkDevice>(dev);
         g_queue = reinterpret_cast<VkQueue>(queue);
-        g_perf = perf != 0;
         std::string why;
         if (!loadFunctions(reinterpret_cast<PFN_vkGetInstanceProcAddr>(gipa), reinterpret_cast<VkInstance>(instance), why)) {
             setErr(err, errlen, why);
@@ -156,18 +158,31 @@ EXPORT int las_lsfg_init(void *gipa, void *instance, void *phys, void *dev, uint
         pi.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         pi.queueFamilyIndex = qfam;
         if (g_dd.CreateCommandPool(g_dev, &pi, nullptr, &g_pool) != VK_SUCCESS) { setErr(err, errlen, "command pool"); return -1; }
-        winfg::Config c;
+        winfg::Config &c = g_cfg;
         c.enabled = true;
-        c.model = g_perf ? 3 : 4;           // 3 = optical flow (lighter), 4 = bidirectional with occlusion gate
-        c.perfPreset = g_perf ? 2 : 1;      // how fine the flow search goes
+        const char *e;
+        int method = (e = std::getenv("LAS_WFG_METHOD")) ? std::atoi(e) : 4;           // 3 = optical flow, 4 = bidirectional
+        int preset = (e = std::getenv("LAS_WFG_PRESET")) ? std::atoi(e) : 1;           // 0 quality, 1 balanced, 2 performance
+        int gm = (e = std::getenv("LAS_WFG_GM")) ? std::atoi(e) : 0;                   // 0 auto, 1 on, 2 off
+        c.model = method == 3 ? 3 : 4;
+        c.perfPreset = preset < 0 ? 0 : preset > 2 ? 2 : preset;
+        c.gmMode = gm < 0 ? 0 : gm > 2 ? 2 : gm;
         c.multiplier = 2;
         c.pacing = false;
         c.debug = false;
+        if ((e = std::getenv("LAS_WFG_HUD")) && *e) {
+            float v[4];
+            if (std::sscanf(e, "%f,%f,%f,%f", &v[0], &v[1], &v[2], &v[3]) == 4 && v[0] < v[2] && v[1] < v[3]) {
+                for (int i = 0; i < 4; i++) g_hudPct[i] = v[i] < 0 ? 0 : v[i] > 100 ? 100 : v[i];
+                g_hasHud = true;
+            }
+        }
         c.sanitize();
         if (!g_fg.init(&g_dd, &g_id, g_phys, g_dev, qfam, g_queue)) { setErr(err, errlen, "the engine could not start"); return -1; }
         g_fg.configure(c);
         g_ready = true;
-        LOG("winfg: engine ready (%s mode: model %d, flow preset %d)", g_perf ? "performance" : "quality", c.model, c.perfPreset);
+        LOG("winfg: engine ready (%s, flow detail %d, camera correction %d%s)", c.model == 3 ? "optical flow" : "bidirectional",
+            c.perfPreset, c.gmMode, g_hasHud ? ", HUD box set" : "");
         return 0;
     } catch (const std::exception &e) {
         setErr(err, errlen, e.what());
@@ -209,6 +224,12 @@ EXPORT int las_lsfg_context(uint64_t in0, uint64_t in1, const uint64_t *outs, in
         if (g_dd.AllocateCommandBuffers(g_dev, &cai, c->cb) != VK_SUCCESS) throw std::runtime_error("command buffers");
         VkFenceCreateInfo fi { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
         for (int i = 0; i < kSlots; i++) if (g_dd.CreateFence(g_dev, &fi, nullptr, &c->fence[i]) != VK_SUCCESS) throw std::runtime_error("fence");
+        if (g_hasHud) {   // the HUD box is given in percent; the engine wants pixels of the generated frame
+            g_cfg.hudX0 = g_hudPct[0] * 0.01f * static_cast<float>(w); g_cfg.hudY0 = g_hudPct[1] * 0.01f * static_cast<float>(h);
+            g_cfg.hudX1 = g_hudPct[2] * 0.01f * static_cast<float>(w); g_cfg.hudY1 = g_hudPct[3] * 0.01f * static_cast<float>(h);
+            g_fg.configure(g_cfg);
+            LOG("winfg: HUD box %.0f,%.0f to %.0f,%.0f px", g_cfg.hudX0, g_cfg.hudY0, g_cfg.hudX1, g_cfg.hudY1);
+        }
         if (!g_fg.onResize({ w, h }, fmt, true)) throw std::runtime_error("the engine could not size itself for this picture");
         int id = g_nextId++;
         g_ctx[id] = c;

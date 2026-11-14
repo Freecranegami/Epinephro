@@ -127,6 +127,22 @@ object Tweaks {
     val fgEngines = listOf("Lossless Scaling (needs Lossless.dll)", "Win-FG (built in, nothing to import)")
     fun fgEngine(ctx: Context): Int = Prefs.get(ctx).getInt("fg_engine", 0).coerceIn(0, 1)
     fun setFgEngine(ctx: Context, e: Int) { Prefs.get(ctx).edit().putInt("fg_engine", e.coerceIn(0, 1)).commit() }
+    // Win-FG's own settings (kept apart from the Lossless Scaling ones)
+    val wfgMethods = listOf("Optical flow (lighter, about 2 ms)", "Bidirectional (sharper on complex motion, heavier)")
+    val wfgPresets = listOf("Quality (finest flow search, most GPU)", "Balanced", "Performance (coarsest search, cheapest)")
+    val wfgGms = listOf("Auto (engages when the estimate is stable)", "On", "Off")
+    fun wfgMethod(ctx: Context): Int = Prefs.get(ctx).getInt("wfg_method", 1).coerceIn(0, 1)
+    fun wfgPreset(ctx: Context): Int = Prefs.get(ctx).getInt("wfg_preset", 1).coerceIn(0, 2)
+    fun wfgGm(ctx: Context): Int = Prefs.get(ctx).getInt("wfg_gm", 0).coerceIn(0, 2)
+    // HUD box as percent of the picture: "left,top,right,bottom", or empty for none
+    fun wfgHud(ctx: Context): String = Prefs.get(ctx).getString("wfg_hud", "") ?: ""
+    fun setWfg(ctx: Context, method: Int, preset: Int, gm: Int, hud: String) {
+        Prefs.get(ctx).edit().putInt("wfg_method", method.coerceIn(0, 1)).putInt("wfg_preset", preset.coerceIn(0, 2))
+            .putInt("wfg_gm", gm.coerceIn(0, 2)).putString("wfg_hud", hud).commit()
+    }
+    fun fgDescribe(ctx: Context): String =
+        if (fgEngine(ctx) == 1) "Win-FG, ${if (wfgMethod(ctx) == 0) "optical flow" else "bidirectional"}, flow detail ${listOf("quality", "balanced", "performance")[wfgPreset(ctx)]}, camera correction ${listOf("auto", "on", "off")[wfgGm(ctx)]}${if (wfgHud(ctx).isNotEmpty()) ", HUD box ${wfgHud(ctx)}" else ""}"
+        else "Lossless Scaling, ${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)}"
     fun fgReady(ctx: Context): Boolean = fgEngine(ctx) == 1 || Lsfg.installed(ctx)
     fun lsfgQuality(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("lsfg_quality", false)
     fun setLsfgQuality(ctx: Context, q: Boolean) { Prefs.get(ctx).edit().putBoolean("lsfg_quality", q).commit() }
@@ -167,6 +183,10 @@ object Tweaks {
             Os.setenv("LAS_LSFG", if (lsfg(ctx) && fgReady(ctx)) "1" else "0", true)
             Os.setenv("LAS_FG_ENGINE", if (fgEngine(ctx) == 1) "winfg" else "lsfg", true)
             Os.setenv("LAS_LSFG_LIB", File(ctx.applicationInfo.nativeLibraryDir, if (fgEngine(ctx) == 1) "libwinfgcore.so" else "liblsfgcore.so").path, true)
+            Os.setenv("LAS_WFG_METHOD", if (wfgMethod(ctx) == 0) "3" else "4", true)
+            Os.setenv("LAS_WFG_PRESET", wfgPreset(ctx).toString(), true)
+            Os.setenv("LAS_WFG_GM", wfgGm(ctx).toString(), true)
+            Os.setenv("LAS_WFG_HUD", wfgHud(ctx), true)
             Os.setenv("LAS_LSFG_PERF", if (lsfgQuality(ctx)) "0" else "1", true)
             Os.setenv("LAS_LSFG_FLOW", "%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05), true)
             Os.setenv("LAS_DRS", if (drsLock(ctx)) "1" else "0", true)
@@ -190,7 +210,7 @@ object Tweaks {
             } else Os.setenv("LAS_PCACHE", "0", true)
             Os.setenv("LAS_PRIO", if (sustained(ctx)) "1" else "0", true)
             Epi.apply(ctx)
-            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; depth diagnostic ${if (depthDiag(ctx)) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; ANGLE ${if (angle(ctx)) "on" else "off"}; pipeline cache ${if (pcache(ctx)) "on" else "off"}; sustained performance ${if (sustained(ctx)) "on" else "off"}; notch ${if (ignoreNotch(ctx)) "ignored" else "kept"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && fgReady(ctx)) "on" else "off"} (${if (fgEngine(ctx) == 1) "Win-FG, " else "Lossless Scaling, "}${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
+            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; depth diagnostic ${if (depthDiag(ctx)) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; ANGLE ${if (angle(ctx)) "on" else "off"}; pipeline cache ${if (pcache(ctx)) "on" else "off"}; sustained performance ${if (sustained(ctx)) "on" else "off"}; notch ${if (ignoreNotch(ctx)) "ignored" else "kept"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && fgReady(ctx)) "on" else "off"} (${fgDescribe(ctx)})")
         } catch (t: Throwable) {
             Log.w("GuestHost", "tweaks failed: $t")
         }

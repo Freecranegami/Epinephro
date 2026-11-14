@@ -620,23 +620,79 @@ class MainActivity : Activity() {
         val group = android.widget.RadioGroup(this).apply { setPadding(48, 24, 48, 0) }
         modes.forEachIndexed { i, s -> group.addView(com.google.android.material.radiobutton.MaterialRadioButton(ctx).apply { text = s; id = 100 + i }) }
         group.check(100 + (if (Tweaks.lsfgQuality(this)) 1 else 0))
-        val eng = android.widget.RadioGroup(this).apply { setPadding(48, 24, 48, 0) }
-        Tweaks.fgEngines.forEachIndexed { i, s -> eng.addView(com.google.android.material.radiobutton.MaterialRadioButton(ctx).apply { text = s; id = 200 + i }) }
-        eng.check(200 + Tweaks.fgEngine(this))
         val bar = M3Seek(this, 20, Tweaks.lsfgFlowSteps(ctx)) { }
         val label = TextView(this).apply { setPadding(48, 32, 48, 0) }
-        fun show(p: Int) { label.text = "Flow scale (Lossless Scaling only): ${"%.2f".format(java.util.Locale.US, p * 0.05)}  (lower = faster but rougher motion; values below 0.25 run as 0.25)" }
+        fun show(p: Int) { label.text = "Flow scale: ${"%.2f".format(java.util.Locale.US, p * 0.05)}  (lower = faster but rougher motion; values below 0.25 run as 0.25)" }
         show(bar.progress)
         bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0); addView(eng); addView(group); addView(label); addView(bar) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0); addView(group); addView(label); addView(bar) }
         MaterialAlertDialogBuilder(this)
-            .setTitle("Frame generation settings")
+            .setTitle("Lossless Scaling settings")
             .setView(box)
             .setPositiveButton("Set") { _, _ ->
-                Tweaks.setFgEngine(this, eng.checkedRadioButtonId - 200)
                 Tweaks.setLsfgQuality(this, group.checkedRadioButtonId == 101)
                 Tweaks.setLsfgFlowSteps(this, bar.progress)
-                out.text = "Frame generation: ${if (Tweaks.fgEngine(this) == 1) "Win-FG" else "Lossless Scaling"}, ${if (Tweaks.lsfgQuality(this)) "quality" else "performance"} mode, flow scale ${"%.2f".format(java.util.Locale.US, bar.progress * 0.05)}. Applies the next time the game starts."
+                out.text = "Lossless Scaling: ${if (Tweaks.lsfgQuality(this)) "quality" else "performance"} mode, flow scale ${"%.2f".format(java.util.Locale.US, bar.progress * 0.05)}. Applies the next time the game starts."
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun chooseFgEngine(out: TextView) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Frame generation engine")
+            .setSingleChoiceItems(Tweaks.fgEngines.toTypedArray(), Tweaks.fgEngine(this)) { d, which ->
+                Tweaks.setFgEngine(this, which)
+                d.dismiss()
+                out.text = "Frame generation engine: ${Tweaks.fgEngines[which]}. Each engine has its own settings below. Applies the next time the game starts."
+                refreshPage()
+            }
+            .show()
+    }
+
+    private fun chooseWinFg(out: TextView) {
+        val ctx = this
+        fun group(items: List<String>, checked: Int, base: Int) = android.widget.RadioGroup(ctx).apply {
+            setPadding(48, 8, 48, 0)
+            items.forEachIndexed { i, s -> addView(com.google.android.material.radiobutton.MaterialRadioButton(ctx).apply { text = s; id = base + i }) }
+            check(base + checked)
+        }
+        fun title(t: String) = TextView(ctx).apply { text = t; setPadding(48, 28, 48, 0); setTypeface(typeface, android.graphics.Typeface.BOLD) }
+        val method = group(Tweaks.wfgMethods, Tweaks.wfgMethod(ctx), 300)
+        val preset = group(Tweaks.wfgPresets, Tweaks.wfgPreset(ctx), 310)
+        val gm = group(Tweaks.wfgGms, Tweaks.wfgGm(ctx), 320)
+        val hud = Tweaks.wfgHud(ctx).split(',').map { it.trim() }.let { if (it.size == 4) it else listOf("", "", "", "") }
+        fun num(hint: String, v: String) = android.widget.EditText(ctx).apply {
+            this.hint = hint; setText(v); inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val l = num("left %", hud[0]); val t = num("top %", hud[1]); val r = num("right %", hud[2]); val bt = num("bottom %", hud[3])
+        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; setPadding(48, 0, 48, 0); addView(l); addView(t); addView(r); addView(bt) }
+        val note = TextView(ctx).apply {
+            text = "HUD box: the part of the picture that is not warped, so text and overlays don't ghost. Give its edges as percent of the picture " +
+                "(for example 0, 0, 100, 12 is the top strip; 0, 85, 100, 100 the bottom strip). Leave empty for none."
+            setPadding(48, 4, 48, 0); textSize = 12f
+        }
+        val box = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0)
+            addView(title("Method")); addView(method)
+            addView(title("Flow detail")); addView(preset)
+            addView(title("Camera-motion correction")); addView(gm)
+            addView(title("HUD exclusion box")); addView(row); addView(note)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Win-FG settings")
+            .setView(android.widget.ScrollView(ctx).apply { addView(box) })
+            .setPositiveButton("Set") { _, _ ->
+                val v = listOf(l, t, r, bt).map { it.text.toString().trim().toFloatOrNull() }
+                var h = ""
+                if (v.all { it != null }) {
+                    val f = v.map { it!!.coerceIn(0f, 100f) }
+                    if (f[0] < f[2] && f[1] < f[3]) h = f.joinToString(",") { "%.1f".format(java.util.Locale.US, it) }
+                }
+                Tweaks.setWfg(this, method.checkedRadioButtonId - 300, preset.checkedRadioButtonId - 310, gm.checkedRadioButtonId - 320, h)
+                out.text = "Win-FG: ${Tweaks.fgDescribe(this).removePrefix("Win-FG, ")}. Applies the next time the game starts."
+                refreshPage()
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -783,9 +839,12 @@ class MainActivity : Activity() {
         header(b, "Frame generation")
         toggle(b, "Frame generation (2x)", if (Tweaks.fgReady(this)) "Makes an in-between frame for every game frame (${if (Tweaks.fgEngine(this) == 1) "Win-FG" else "Lossless Scaling"})" else "Import Lossless.dll first, or pick the Win-FG engine",
             { Tweaks.lsfg(this) }) { toggleLsfg(outView) }
-        action(b, "Engine, quality and flow scale",
-            "${if (Tweaks.fgEngine(this) == 1) "Win-FG" else "Lossless Scaling"}, ${if (Tweaks.lsfgQuality(this)) "Quality" else "Performance"}, flow ${"%.2f".format(java.util.Locale.US, Tweaks.lsfgFlowSteps(this) * 0.05)}") { chooseLsfg(outView) }
-        if (withDll) {
+        action(b, "Frame generation engine", if (Tweaks.fgEngine(this) == 1) "Win-FG" else "Lossless Scaling") { chooseFgEngine(outView) }
+        if (Tweaks.fgEngine(this) == 1)
+            action(b, "Win-FG settings", Tweaks.fgDescribe(this).removePrefix("Win-FG, ")) { chooseWinFg(outView) }
+        else
+            action(b, "Lossless Scaling settings", Tweaks.fgDescribe(this).removePrefix("Lossless Scaling, ")) { chooseLsfg(outView) }
+        if (withDll && Tweaks.fgEngine(this) == 0) {
             action(b, "Import Lossless.dll", if (Lsfg.installed(this)) "Imported" else "Not imported") { importLossless(outView) }
             action(b, "Check Lossless.dll", "Tests that the shaders can be used on this phone") { checkLossless(outView) }
         }
