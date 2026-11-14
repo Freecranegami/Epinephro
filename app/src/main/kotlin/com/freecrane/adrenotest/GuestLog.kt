@@ -77,7 +77,23 @@ object GuestLog {
                 ?.filter { it.exists() && now - it.lastModified() < 15 * 60_000 }?.maxByOrNull { it.lastModified() }
             if (f != null) {
                 sb.append("--- the game's own crash report (${f.name}) ---\n")
-                sb.append(f.readLines().takeLast(70).joinToString("\n") { it.take(240) }).append("\n")
+                // the crashing thread comes first, then every other thread: keep the top, and show identical threads (idle workers) once
+                val all = f.readLines().map { it.take(240) }
+                val out = ArrayList<String>(all.take(45))
+                val blocks = ArrayList<ArrayList<String>>()
+                var cur = ArrayList<String>()
+                for (l in all.drop(45)) { if (l.isBlank()) { if (cur.isNotEmpty()) blocks.add(cur); cur = ArrayList() } else cur.add(l) }
+                if (cur.isNotEmpty()) blocks.add(cur)
+                val counts = LinkedHashMap<String, Int>(); val first = HashMap<String, ArrayList<String>>()
+                for (b in blocks) {
+                    val key = b.drop(1).joinToString("\n") + (b.firstOrNull()?.substringBefore(" sysTid") ?: "")
+                    counts[key] = (counts[key] ?: 0) + 1; first.putIfAbsent(key, b)
+                }
+                for ((k, c) in counts) {
+                    val b = first[k]!!
+                    out.add(""); out.addAll(b.take(12)); if (c > 1) out.add("   [this thread repeated x$c]")
+                }
+                sb.append(out.take(120).joinToString("\n")).append("\n")
             }
         } catch (t: Throwable) { }
         return sb.toString()
