@@ -62,6 +62,7 @@ class HostApp : Application() {
         if (inGuestProcess()) {
             if (!Tweaks.light(this)) GuestLogFile.start(this)   // light mode: no log capture to a file
             HiddenApi.exemptAll()
+            MainGuard.install()
             if (Build.VERSION.SDK_INT >= 29) registerActivityLifecycleCallbacks(GuestSwap)
         }
     }
