@@ -123,6 +123,11 @@ object Tweaks {
 
     // Lock the game's dynamic resolution (its scene size is kept at the largest step). Default off.
     // Frame generation quality: false = performance (lighter shaders), true = quality. Flow scale in steps of 0.05 (0..20).
+    // Frame generation engine: 0 = Lossless Scaling (needs Lossless.dll), 1 = Win-FG (built in, no import)
+    val fgEngines = listOf("Lossless Scaling (needs Lossless.dll)", "Win-FG (built in, nothing to import)")
+    fun fgEngine(ctx: Context): Int = Prefs.get(ctx).getInt("fg_engine", 0).coerceIn(0, 1)
+    fun setFgEngine(ctx: Context, e: Int) { Prefs.get(ctx).edit().putInt("fg_engine", e.coerceIn(0, 1)).commit() }
+    fun fgReady(ctx: Context): Boolean = fgEngine(ctx) == 1 || Lsfg.installed(ctx)
     fun lsfgQuality(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("lsfg_quality", false)
     fun setLsfgQuality(ctx: Context, q: Boolean) { Prefs.get(ctx).edit().putBoolean("lsfg_quality", q).commit() }
     fun lsfgFlowSteps(ctx: Context): Int = Prefs.get(ctx).getInt("lsfg_flow", 10).coerceIn(0, 20)
@@ -159,8 +164,9 @@ object Tweaks {
             Os.setenv("LAS_RES_W", if (rw > 0 && rh > 0) rw.toString() else "0", true)
             Os.setenv("LAS_RES_H", if (rw > 0 && rh > 0) rh.toString() else "0", true)
             if (Lsfg.installed(ctx)) Os.setenv("LAS_LSFG_DLL", Lsfg.dll(ctx).path, true)
-            Os.setenv("LAS_LSFG", if (lsfg(ctx) && Lsfg.installed(ctx)) "1" else "0", true)
-            Os.setenv("LAS_LSFG_LIB", File(ctx.applicationInfo.nativeLibraryDir, "liblsfgcore.so").path, true)
+            Os.setenv("LAS_LSFG", if (lsfg(ctx) && fgReady(ctx)) "1" else "0", true)
+            Os.setenv("LAS_FG_ENGINE", if (fgEngine(ctx) == 1) "winfg" else "lsfg", true)
+            Os.setenv("LAS_LSFG_LIB", File(ctx.applicationInfo.nativeLibraryDir, if (fgEngine(ctx) == 1) "libwinfgcore.so" else "liblsfgcore.so").path, true)
             Os.setenv("LAS_LSFG_PERF", if (lsfgQuality(ctx)) "0" else "1", true)
             Os.setenv("LAS_LSFG_FLOW", "%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05), true)
             Os.setenv("LAS_DRS", if (drsLock(ctx)) "1" else "0", true)
@@ -184,7 +190,7 @@ object Tweaks {
             } else Os.setenv("LAS_PCACHE", "0", true)
             Os.setenv("LAS_PRIO", if (sustained(ctx)) "1" else "0", true)
             Epi.apply(ctx)
-            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; depth diagnostic ${if (depthDiag(ctx)) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; ANGLE ${if (angle(ctx)) "on" else "off"}; pipeline cache ${if (pcache(ctx)) "on" else "off"}; sustained performance ${if (sustained(ctx)) "on" else "off"}; notch ${if (ignoreNotch(ctx)) "ignored" else "kept"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && Lsfg.installed(ctx)) "on" else "off"} (${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
+            Log.i("GuestHost", "tweaks: light mode ${if (l) "on" else "off"}; depth diagnostic ${if (depthDiag(ctx)) "on" else "off"}; resolution ${if (rw > 0 && rh > 0) "${rw}x$rh" else "native"}; upscaler ${upscalers[upscaler(ctx)].substringBefore(" (")}${if (upscaler(ctx) == 2) " (RCAS ${rcasPercent(ctx)}%)" else ""}; ${if (stretch(ctx)) "stretch to fit" else "keep ratio"}; ANGLE ${if (angle(ctx)) "on" else "off"}; pipeline cache ${if (pcache(ctx)) "on" else "off"}; sustained performance ${if (sustained(ctx)) "on" else "off"}; notch ${if (ignoreNotch(ctx)) "ignored" else "kept"}; steady resolution ${if (drsLock(ctx)) "on" else "off"}; frame generation ${if (lsfg(ctx) && fgReady(ctx)) "on" else "off"} (${if (fgEngine(ctx) == 1) "Win-FG, " else "Lossless Scaling, "}${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)})")
         } catch (t: Throwable) {
             Log.w("GuestHost", "tweaks failed: $t")
         }

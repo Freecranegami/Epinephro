@@ -34,6 +34,7 @@ target_compile_definitions(vkshim PRIVATE VK_NO_PROTOTYPES)
 target_link_libraries(vkshim dl log m)
 
 add_subdirectory(lsfg)
+add_subdirectory(winfg)
 
 # EpiShaders: ReShade effects (compiled with ReShade's own compiler) run as extra passes after the upscaler.
 file(GLOB EPIFX_SRC "${CMAKE_CURRENT_SOURCE_DIR}/epifx/reshadefx/*.cpp")

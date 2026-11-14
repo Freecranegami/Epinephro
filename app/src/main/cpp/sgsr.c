@@ -113,9 +113,16 @@ static struct {
 static VkInstance g_inst;
 static int g_lg_dev_ok = 1;
 
+/* LAS_FG_ENGINE=winfg: the built-in Win-FG engine, which needs no DLL and no extra device features. */
+static int lg_winfg(void) {
+    static int s = -1;
+    if (s < 0) { const char *e = getenv("LAS_FG_ENGINE"); s = (e && !strcmp(e, "winfg")) ? 1 : 0; }
+    return s;
+}
+
 int vkshim_lsfg_wanted(void) {
     static int s = -1;
-    if (s < 0) { const char *e = getenv("LAS_LSFG"), *d = getenv("LAS_LSFG_DLL"); s = (e && *e == '1' && d && *d) ? 1 : 0; }
+    if (s < 0) { const char *e = getenv("LAS_LSFG"), *d = getenv("LAS_LSFG_DLL"); s = (e && *e == '1' && ((d && *d) || lg_winfg())) ? 1 : 0; }
     return s && g_lg_dev_ok;
 }
 
@@ -126,6 +133,7 @@ void vkshim_lsfg_predevice(long phys, long pci) {
     static VkPhysicalDeviceVulkan12Features extra12;
     static VkPhysicalDeviceFeatures extraCore;
     if (!vkshim_lsfg_wanted() || !pci || !phys) return;
+    if (lg_winfg()) { LOGI("winfg: frame generation with the built-in Win-FG engine (no extra device features needed)"); return; }
     PFN_vkGetPhysicalDeviceFeatures2 gf2 = (PFN_vkGetPhysicalDeviceFeatures2)vkshim_real_proc("vkGetPhysicalDeviceFeatures2");
     if (!gf2) gf2 = (PFN_vkGetPhysicalDeviceFeatures2)vkshim_real_proc("vkGetPhysicalDeviceFeatures2KHR");
     if (!gf2) { LOGI("lsfg: off, no vkGetPhysicalDeviceFeatures2"); g_lg_dev_ok = 0; return; }
@@ -865,7 +873,7 @@ static void *lg_thread(void *p) {
     if (flow > 1.0f) flow = 1.0f;
     if (!phys || !gipa || !g_inst) { LOGI("lsfg: off, instance/device unknown"); return NULL; }
     if (!LG.ready) {
-        LOGI("lsfg: starting (%s mode, flow scale %.2f)...", perf ? "performance" : "quality", flow);
+        LOGI("lsfg: starting (%s engine, %s mode, flow scale %.2f)...", lg_winfg() ? "Win-FG" : "Lossless Scaling", perf ? "performance" : "quality", flow);
         if (LG.init((void *)gipa, g_inst, phys, c->dev, c->family, a->q, perf, 1.0f / flow, 1, 0, dll, err, sizeof err) != 0) {
             LOGI("lsfg: off, init failed: %s", err); return NULL;
         }

@@ -605,10 +605,10 @@ class MainActivity : Activity() {
     }
 
     private fun toggleLsfg(out: TextView) {
-        if (!Lsfg.installed(this)) { out.text = "Import Lossless.dll first (the button above)."; return }
+        if (!Tweaks.fgReady(this)) { out.text = "Import Lossless.dll first (the button below), or choose the Win-FG engine in the frame generation settings."; return }
         val on = !Tweaks.lsfg(this)
         Tweaks.setLsfg(this, on)
-        out.text = if (on) "Frame generation ON (2x): an in-between frame is made for every game frame, using the shaders from your Lossless.dll. " +
+        out.text = if (on) "Frame generation ON (2x): an in-between frame is made for every game frame, using ${if (Tweaks.fgEngine(this) == 1) "the built-in Win-FG engine" else "the shaders from your Lossless.dll"}. " +
                 "It costs GPU time, so it may help less when the game is already GPU-bound, and it adds about one frame of delay. " +
                 "Applies the next time the game starts. If the picture breaks or the game stalls, turn it off and send the Guest log."
                    else "Frame generation OFF. Applies the next time the game starts."
@@ -620,19 +620,23 @@ class MainActivity : Activity() {
         val group = android.widget.RadioGroup(this).apply { setPadding(48, 24, 48, 0) }
         modes.forEachIndexed { i, s -> group.addView(com.google.android.material.radiobutton.MaterialRadioButton(ctx).apply { text = s; id = 100 + i }) }
         group.check(100 + (if (Tweaks.lsfgQuality(this)) 1 else 0))
+        val eng = android.widget.RadioGroup(this).apply { setPadding(48, 24, 48, 0) }
+        Tweaks.fgEngines.forEachIndexed { i, s -> eng.addView(com.google.android.material.radiobutton.MaterialRadioButton(ctx).apply { text = s; id = 200 + i }) }
+        eng.check(200 + Tweaks.fgEngine(this))
         val bar = M3Seek(this, 20, Tweaks.lsfgFlowSteps(ctx)) { }
         val label = TextView(this).apply { setPadding(48, 32, 48, 0) }
-        fun show(p: Int) { label.text = "Flow scale: ${"%.2f".format(java.util.Locale.US, p * 0.05)}  (lower = faster but rougher motion; values below 0.25 run as 0.25)" }
+        fun show(p: Int) { label.text = "Flow scale (Lossless Scaling only): ${"%.2f".format(java.util.Locale.US, p * 0.05)}  (lower = faster but rougher motion; values below 0.25 run as 0.25)" }
         show(bar.progress)
         bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0); addView(group); addView(label); addView(bar) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0); addView(eng); addView(group); addView(label); addView(bar) }
         MaterialAlertDialogBuilder(this)
             .setTitle("Frame generation settings")
             .setView(box)
             .setPositiveButton("Set") { _, _ ->
+                Tweaks.setFgEngine(this, eng.checkedRadioButtonId - 200)
                 Tweaks.setLsfgQuality(this, group.checkedRadioButtonId == 101)
                 Tweaks.setLsfgFlowSteps(this, bar.progress)
-                out.text = "Frame generation: ${if (Tweaks.lsfgQuality(this)) "quality" else "performance"} mode, flow scale ${"%.2f".format(java.util.Locale.US, bar.progress * 0.05)}. Applies the next time the game starts."
+                out.text = "Frame generation: ${if (Tweaks.fgEngine(this) == 1) "Win-FG" else "Lossless Scaling"}, ${if (Tweaks.lsfgQuality(this)) "quality" else "performance"} mode, flow scale ${"%.2f".format(java.util.Locale.US, bar.progress * 0.05)}. Applies the next time the game starts."
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -777,10 +781,10 @@ class MainActivity : Activity() {
 
     private fun addFrameGen(b: LinearLayout, withDll: Boolean) {
         header(b, "Frame generation")
-        toggle(b, "Frame generation (2x)", if (Lsfg.installed(this)) "Makes an in-between frame for every game frame" else "Import Lossless.dll first",
+        toggle(b, "Frame generation (2x)", if (Tweaks.fgReady(this)) "Makes an in-between frame for every game frame (${if (Tweaks.fgEngine(this) == 1) "Win-FG" else "Lossless Scaling"})" else "Import Lossless.dll first, or pick the Win-FG engine",
             { Tweaks.lsfg(this) }) { toggleLsfg(outView) }
-        action(b, "Quality and flow scale",
-            "${if (Tweaks.lsfgQuality(this)) "Quality" else "Performance"}, flow ${"%.2f".format(java.util.Locale.US, Tweaks.lsfgFlowSteps(this) * 0.05)}") { chooseLsfg(outView) }
+        action(b, "Engine, quality and flow scale",
+            "${if (Tweaks.fgEngine(this) == 1) "Win-FG" else "Lossless Scaling"}, ${if (Tweaks.lsfgQuality(this)) "Quality" else "Performance"}, flow ${"%.2f".format(java.util.Locale.US, Tweaks.lsfgFlowSteps(this) * 0.05)}") { chooseLsfg(outView) }
         if (withDll) {
             action(b, "Import Lossless.dll", if (Lsfg.installed(this)) "Imported" else "Not imported") { importLossless(outView) }
             action(b, "Check Lossless.dll", "Tests that the shaders can be used on this phone") { checkLossless(outView) }

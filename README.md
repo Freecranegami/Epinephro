@@ -33,7 +33,7 @@ Because the app sits between the game and the GPU, it can also do things the gam
 | 🧩 | **Custom drivers**: load a newer or different Vulkan driver per game |
 | 🔍 | **Upscalers**: render the game at a lower resolution and scale it up with **SGSR 1** or **FSR 1** |
 | 🎨 | **EpiShaders**: ReShade-style effects (sharpening, anti-aliasing, colour, bloom, CRT and more) on top of any game |
-| ⏩ | **Frame generation**: an in-between frame for every real frame (needs your own copy of `Lossless.dll`) |
+| ⏩ | **Frame generation**: an in-between frame for every real frame, with the built-in Win-FG engine or, if you import your own `Lossless.dll`, Lossless Scaling's |
 | 🔺 | **OpenGL ES via ANGLE** (experimental): run OpenGL ES games by translating them to Vulkan, through our layer and your custom driver |
 | 🎮 | **Virtual Xbox 360 controller**: on-screen sticks and buttons with a layout editor |
 | 🛠️ | **Compatibility tools**: GPU and device spoofing, file redirects, asset-pack handling, per-game settings, logs |
@@ -72,6 +72,8 @@ The game is told its screen is smaller than it really is (the **Resolution** set
 ### Frame generation
 
 The generator is the algorithm of Lossless Scaling's frame generation (LSFG), ported to run here through the work of [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk). The shaders it needs are read from a `Lossless.dll` you provide (this app does not include it). Each game frame is copied, the generator creates an in-between frame, and both go through the same upscaling chain and are presented one after the other. A **Check Lossless.dll** button tests that the shaders compile on your phone. Quality and the optical-flow scale are adjustable.
+
+**Win-FG** is the built-in alternative: an optical-flow frame generator written from published algorithms, with nothing to import. Choose it under *Engine, quality and flow scale*. It runs the same way (copy the frame, generate, present both), so the notes above about GPU cost and delay apply to it too.
 
 ### Virtual Xbox 360 controller
 
@@ -135,6 +137,7 @@ This project stands on other people's work. Each file keeps its own licence head
 
 **Frame generation**
 - **Lossless Scaling** by THS, whose frame-generation algorithm this builds on
+- [Win-FG](https://github.com/The412Banner/win-fg) by The412Banner (MIT), the built-in frame generation engine; its optical flow follows AMD's FidelityFX FSR 3 (MIT)
 - [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk) by PancakeTAS and contributors (MIT), plus its bundled libraries (volk, pe-parse, dxbc)
 
 **EpiShaders**
@@ -163,7 +166,7 @@ Third-party code keeps its own licence, and each file keeps its header. Everythi
 | Licence | What |
 |---|---|
 | BSD-3-Clause | ANGLE (not bundled in the source, fetched at build time), Snapdragon Game Super Resolution, ReShade and the `reshadefx` compiler |
-| MIT | FidelityFX FSR 1 and CAS, lsfg-vk and its framegen code, volk, pe-parse, Rendu (FXAA), several SweetFX / ReShade effects |
+| MIT | FidelityFX FSR 1 and CAS, Win-FG, lsfg-vk and its framegen code, volk, pe-parse, Rendu (FXAA), several SweetFX / ReShade effects |
 | zlib | the dxbc code that lsfg-vk bundles (from DXVK) |
 | Public domain | stb_image |
 | Khronos licences | SPIRV-Headers and the Vulkan headers |
