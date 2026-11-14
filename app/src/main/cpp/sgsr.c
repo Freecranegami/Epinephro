@@ -236,6 +236,7 @@ typedef struct {
     VkSampler samp; VkRenderPass rp; VkDescriptorSetLayout dsl; VkPipelineLayout pl; VkPipeline pipe;
     VkDescriptorPool dp; VkCommandPool pool; VkShaderModule vs, fs;
     /* FXAA before the upscale: game image -> FXAA -> intermediate image (game size) -> SGSR */
+    int pre, fx0;                        /* pre: the effects run at the game's size before the upscale (they take the FXAA pass's place, fx0 = FXAA as asked) */
     int fx; VkImage qimg[MAXI]; VkDeviceMemory qmem[MAXI]; VkImageView qview[MAXI]; VkFramebuffer qfb[MAXI];
     VkDescriptorSet dsq[MAXI]; VkRenderPass rpm; VkPipeline pipefx; VkShaderModule fvs, ffs;
     /* FSR 1 (mode 2): game image [-> FXAA] -> EASU -> full-size image -> RCAS -> swapchain image */
@@ -382,7 +383,9 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .image = src, .subresourceRange = rng };
     F.CmdPipelineBarrier(cb2, gen ? (VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT) : (VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT),
                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &b1);
-    if (c->fx) {                                           /* (mode 2 below reads this pass's output) */
+    if (c->pre) {                                          /* the effects, at the game's size, into the intermediate image */
+        EP.record(c->epi, cb2, (uint64_t)c->qfb[slot], slot);
+    } else if (c->fx) {                                    /* (mode 2 below reads this pass's output) */
         VkRenderPassBeginInfo rbq = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = c->rpm, .framebuffer = c->qfb[slot],
             .renderArea = { { 0, 0 }, c->in }, .clearValueCount = 1, .pClearValues = &black };
         F.CmdBeginRenderPass(cb2, &rbq, VK_SUBPASS_CONTENTS_INLINE);
@@ -401,11 +404,11 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
         F.CmdDraw(cb2, 3, 1, 0, 0);
         F.CmdEndRenderPass(cb2);
     }
-    if (c->epi && c->edirect) {                            /* nothing to scale: the effects read the game's image and write the swapchain image */
+    if (c->epi && c->edirect && !c->pre) {                            /* nothing to scale: the effects read the game's image and write the swapchain image */
         EP.record(c->epi, cb2, (uint64_t)c->fb[fbi], slot);
     } else {
-    VkRenderPassBeginInfo rbi = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = c->epi ? c->rpm : c->rp,
-        .framebuffer = c->epi ? c->efb : c->fb[fbi],
+    VkRenderPassBeginInfo rbi = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = (c->epi && !c->pre) ? c->rpm : c->rp,
+        .framebuffer = (c->epi && !c->pre) ? c->efb : c->fb[fbi],
         .renderArea = { { 0, 0 }, c->out }, .clearValueCount = 1, .pClearValues = &black };
     F.CmdBeginRenderPass(cb2, &rbi, VK_SUBPASS_CONTENTS_INLINE);
     F.CmdBindPipeline(cb2, VK_PIPELINE_BIND_POINT_GRAPHICS, c->pipe);
@@ -416,7 +419,7 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
     else F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, c->vinfo);
     F.CmdDraw(cb2, 3, 1, 0, 0);
     F.CmdEndRenderPass(cb2);
-    if (c->epi) EP.record(c->epi, cb2, (uint64_t)c->fb[fbi], slot);
+    if (c->epi && !c->pre) EP.record(c->epi, cb2, (uint64_t)c->fb[fbi], slot);
     }
     /* hand the image back: the game's in PRESENT_SRC, the generated one in GENERAL for the next generation */
     VkImageMemoryBarrier b2 = { .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -520,16 +523,31 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             .pAttachments = &c->rview[i], .width = c->out.width, .height = c->out.height, .layers = 1 };
         ST("create framebuffer", F.CreateFramebuffer(d, &fi, NULL, &c->fb[i]));
     }
+    if (c->pre) {                                          /* the effects' last pass renders into the intermediate image with this pass */
+        VkAttachmentDescription am0 = ad;
+        am0.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkSubpassDependency dm0[2] = {
+            { .srcSubpass = VK_SUBPASS_EXTERNAL, .dstSubpass = 0, .srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+              .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+              .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT },
+            { .srcSubpass = 0, .dstSubpass = VK_SUBPASS_EXTERNAL, .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+              .dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+              .dstAccessMask = VK_ACCESS_SHADER_READ_BIT } };
+        VkRenderPassCreateInfo rpm0 = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, .attachmentCount = 1, .pAttachments = &am0,
+            .subpassCount = 1, .pSubpasses = &sp, .dependencyCount = 2, .pDependencies = dm0 };
+        ST("create intermediate render pass", F.CreateRenderPass(d, &rpm0, NULL, &c->rpm));
+    }
     if (epi_wanted() && epi_load()) {
         /* Direct mode: when there is nothing to scale (same size, no upscaler, no black bars, no frame generation) the effects read the
          * game's images themselves, which saves a whole full-screen copy of the picture. */
-        int direct = c->ofmt == c->fmt && c->mode == 3 && !c->fx && !c->lg && c->in.width == c->out.width && c->in.height == c->out.height &&
-                     c->rect.offset.x == 0 && c->rect.offset.y == 0 && c->rect.extent.width == c->out.width && c->rect.extent.height == c->out.height;
+        int direct = c->pre || (c->ofmt == c->fmt && c->mode == 3 && !c->fx && !c->lg && c->in.width == c->out.width && c->in.height == c->out.height &&
+                     c->rect.offset.x == 0 && c->rect.offset.y == 0 && c->rect.extent.width == c->out.width && c->rect.extent.height == c->out.height);
         uint64_t srcs[MAXI];
         for (uint32_t i = 0; i < n; i++) srcs[i] = (uint64_t)c->pimg[i];
         void *phys = vkshim_phys_of(d), *gipa = vkshim_real_proc("vkGetInstanceProcAddr");
         c->epi = (phys && gipa && g_inst) ? EP.create(getenv("LAS_EPI_ROOT"), getenv("LAS_EPI_PRESET"), gipa, g_inst, phys, d,
-                                                      c->out.width, c->out.height, (int)c->ofmt, (void *)c->rp, direct ? srcs : NULL, direct ? n : 0) : NULL;
+                                                      c->pre ? c->in.width : c->out.width, c->pre ? c->in.height : c->out.height, (int)c->ofmt,
+                                                      c->pre ? (void *)c->rpm : (void *)c->rp, direct ? srcs : NULL, direct ? n : 0) : NULL;
         if (c->epi && !direct) {
             uint64_t im = 0, vw = 0;
             if (EP.input(c->epi, &im, &vw) == 0) c->eview = (VkImageView)vw;
@@ -537,6 +555,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         }
         c->edirect = c->epi && direct;
     }
+    if (c->pre && !c->epi) { c->pre = 0; c->fx = c->fx0; LOGI("epifx: can't run before the upscaler, off"); }
     if (c->fx || c->mode == 2 || (c->epi && !c->edirect)) {
         VkAttachmentDescription am = ad;
         am.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -549,7 +568,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
               .dstAccessMask = VK_ACCESS_SHADER_READ_BIT } };
         VkRenderPassCreateInfo rpm = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, .attachmentCount = 1, .pAttachments = &am,
             .subpassCount = 1, .pSubpasses = &sp, .dependencyCount = 2, .pDependencies = dm };
-        ST("create intermediate render pass", F.CreateRenderPass(d, &rpm, NULL, &c->rpm));
+        if (!c->rpm) ST("create intermediate render pass", F.CreateRenderPass(d, &rpm, NULL, &c->rpm));
         if (c->epi && !c->edirect) {
             VkFramebufferCreateInfo fe = { .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, .renderPass = c->rpm, .attachmentCount = 1,
                 .pAttachments = &c->eview, .width = c->out.width, .height = c->out.height, .layers = 1 };
@@ -636,7 +655,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         ST("create fragment shader", F.CreateShaderModule(d, &smi, NULL, &c->fs));
         ST("create pipeline", mk_pipe(c, c->vs, c->fs, c->rp, c->rect, &c->pipe));
     }
-    if (c->fx) {
+    if (c->fx && !c->pre) {
         smi.codeSize = sizeof fxaa_vs_spv; smi.pCode = fxaa_vs_spv;
         ST("create FXAA vertex shader", F.CreateShaderModule(d, &smi, NULL, &c->fvs));
         smi.codeSize = sizeof fxaa_fs_spv; smi.pCode = fxaa_fs_spv;
@@ -802,6 +821,14 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
     /* ANGLE builds its swapchain as 16-bit RGB565 when the game asks for a 565 surface. The effects need an 8-bit one; our own full-size
      * swapchain is the one the screen gets, so it can be 8-bit while the game keeps rendering into its 565 proxy images. */
     if (wantEpi && ci.imageFormat == VK_FORMAT_R5G6B5_UNORM_PACK16) { c->ofmt = VK_FORMAT_R8G8B8A8_UNORM; LOGI("sgsr: the game's swapchain is 16-bit (RGB565), the screen's is 8-bit for the effects"); }
+    {   /* EpiShaders before the upscale: the effects read the game's image and draw into the intermediate image at the game's size, the
+         * upscaler then enlarges that. Far fewer pixels per effect. Not with frame generation (its generated frame has no game image). */
+        const char *pe = getenv("LAS_EPI_PRE");
+        int scaling = c->mode != 3 || c->in.width != c->out.width || c->in.height != c->out.height ||
+                      c->rect.extent.width != c->out.width || c->rect.extent.height != c->out.height;
+        c->pre = wantEpi && !(pe && *pe == '0') && !c->lg && c->ofmt == c->fmt && scaling;
+        if (c->pre) { c->fx0 = c->fx; c->fx = 1; }
+    }
     VkSwapchainCreateInfoKHR rci = ci;
     rci.imageFormat = c->ofmt;
     rci.imageExtent = caps.currentExtent;
@@ -840,7 +867,7 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
     if (c->lg) LOGI("lsfg: swapchain ready for frame generation (starts at the first present)");
     LOGI("sgsr: picture placed at %d,%d size %ux%u%s", c->rect.offset.x, c->rect.offset.y, c->rect.extent.width, c->rect.extent.height,
          (c->rect.extent.width == c->out.width && c->rect.extent.height == c->out.height) ? " (fills the screen)" : " (ratio kept, black bars)");
-    if (c->epi) LOGI("epifx: effects run after the upscale"); else if (wantEpi) LOGI("epifx: not running (see the lines above)");
+    if (c->epi) LOGI(c->pre ? "epifx: effects run before the upscale, at the game's size" : "epifx: effects run after the upscale"); else if (wantEpi) LOGI("epifx: not running (see the lines above)");
     if (c->mode == 2) { if (c->norcas) LOGI("sgsr: RCAS off (sharpness 0 %%): EASU draws straight into the final image"); else LOGI("sgsr: RCAS sharpness %.2f stops (0 = sharpest)", c->rcas); }
     return 1;
 }

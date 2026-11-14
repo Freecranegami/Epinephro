@@ -57,6 +57,9 @@ object Epi {
 
     fun master(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("epi_on", true)
     fun setMaster(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("epi_on", on).commit() }
+    /** true: the effects run at the game's own (smaller) size before the upscaler, which costs much less; false: after it, at screen size. */
+    fun beforeUpscale(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("epi_pre", true)
+    fun setBeforeUpscale(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("epi_pre", on).commit() }
     fun on(ctx: Context, id: String): Boolean = Prefs.get(ctx).getBoolean("epi_e_$id", false)
     fun setOn(ctx: Context, id: String, v: Boolean) { Prefs.get(ctx).edit().putBoolean("epi_e_$id", v).commit() }
     fun enabledCount(ctx: Context): Int = all.count { on(ctx, it.id) }
@@ -322,6 +325,7 @@ object Epi {
             Os.setenv("LAS_EPI_LIB", File(ctx.applicationInfo.nativeLibraryDir, "libepifx.so").path, true)
             Os.setenv("LAS_EPI_ROOT", r.path, true)
             Os.setenv("LAS_EPI_PRESET", pre.path, true)
+            Os.setenv("LAS_EPI_PRE", if (beforeUpscale(ctx)) "1" else "0", true)
             Log.i("GuestHost", "epishaders: on, ${enabled.joinToString { it.id }}")
         } catch (t: Throwable) {
             Log.w("GuestHost", "epishaders: setup failed: $t")

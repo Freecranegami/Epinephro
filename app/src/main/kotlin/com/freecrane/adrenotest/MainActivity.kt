@@ -856,7 +856,9 @@ class MainActivity : Activity() {
         header(b, "EpiShaders")
         toggle(b, "EpiShaders", "Master switch: off turns every effect off without forgetting your choices",
             { Epi.master(this) }) { Epi.setMaster(this, !Epi.master(this)); refreshPage() }
-        b.addView(label("Effects run on the finished picture, after the upscaler. Each one costs some speed. Applies the next time the game starts. " +
+        toggle(b, "Run before the upscaler", "On: effects work at the game's own size, then the upscaler enlarges the result. Much cheaper, slightly softer. Off: effects work at screen size, sharper but dearer. Only matters when the game renders below the screen size.",
+            { Epi.beforeUpscale(this) }) { Epi.setBeforeUpscale(this, !Epi.beforeUpscale(this)); refreshPage() }
+        b.addView(label("Each effect costs some speed. Applies the next time the game starts. " +
             "If the screen goes black, turn the effect off." + (if (Epi.enabledCount(this) > 0 && !Epi.master(this)) " (Master switch is off, so none of the chosen effects run.)" else ""),
             12f, cSub).apply { setPadding(dp(4), 0, dp(4), dp(8)) })
         for (g in Epi.groups) {
