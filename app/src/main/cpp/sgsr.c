@@ -476,7 +476,9 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             ST("create generated view", F.CreateImageView(d, &ov, NULL, &c->oview));
         }
         ici.format = c->ofmt; vci.format = c->ofmt;
-        if (c->ofmt != c->fmt) { ici.flags = 0; ici.pNext = NULL; }
+        /* the intermediate images are only ever drawn into and sampled with their own format: no 'mutable format' flag, so the driver is free to
+         * keep them compressed (on Adreno, UBWC), which cuts what every full-screen pass reads and writes */
+        ici.flags = 0; ici.pNext = NULL;
         if (c->fx) {
             ici.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
             ST("create intermediate image", F.CreateImage(d, &ici, NULL, &c->qimg[i]));
@@ -510,6 +512,10 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,      /* black bars when the ratio is kept */
         .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED, .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR };
+    /* When the picture fills the whole target, every pixel is drawn, so nothing needs clearing first. A clear that the driver can't do in
+     * tile memory (Adreno often renders a simple full-screen pass without tiles) is a whole extra full-screen write. Black bars need it. */
+    if (c->rect.offset.x == 0 && c->rect.offset.y == 0 && c->rect.extent.width == c->out.width && c->rect.extent.height == c->out.height)
+        ad.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     VkAttachmentReference ar = { 0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
     VkSubpassDescription sp = { .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS, .colorAttachmentCount = 1, .pColorAttachments = &ar };
     VkSubpassDependency dep = { .srcSubpass = VK_SUBPASS_EXTERNAL, .dstSubpass = 0,
