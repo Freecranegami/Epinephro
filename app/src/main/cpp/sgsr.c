@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include "sgsr_spv.h"
 #include "sgsrq_spv.h"
+#include "episr_spv.h"
 #include "fxaa_spv.h"
 #include "fsr_spv.h"
 #include "scale_spv.h"
@@ -244,7 +245,7 @@ typedef struct {
     VkRect2D rect;                       /* where the picture goes on the screen (smaller than the screen when the ratio is kept) */
     int mode, norcas; float rcas; VkImage uimg[MAXI]; VkDeviceMemory umem[MAXI]; VkImageView uview[MAXI]; VkFramebuffer ufb[MAXI];
     VkDescriptorSet dsu[MAXI]; VkPipeline pipee; VkShaderModule efs;
-    float vinfo[4]; uint32_t easu[16], rcasc[4];      /* push constants, same for every pass of the chain */
+    float vinfo[12]; int epi; uint32_t easu[16], rcasc[4];      /* push constants, same for every pass of the chain */
     /* frame generation (LSFG): the proxy image is copied into fimg[], the generated frame lands in oimg and is run through
      * the same chain as a real frame, as "slot n" (cmdg[j] draws it into swapchain image j) */
     int lg, lgbad, ctx; VkQueue lgq; unsigned long fidx;
@@ -278,7 +279,7 @@ int vkshim_sgsr_enabled(void) {
 static int sgsr_mode(void) {
     const char *f = getenv("LAS_FSR"), *e = getenv("LAS_SGSR");
     if (f && *f == '1') return 2;
-    if (e && (*e == '1' || *e == '2')) return 1;                /* LAS_SGSR=2 is the same pass with the edge-direction shader (SGSR Quality) */
+    if (e && (*e == '1' || *e == '2' || *e == '3')) return 1;                /* LAS_SGSR=2 is the same pass with the edge-direction shader (SGSR Quality) */
     return 3;
 }
 
@@ -417,7 +418,7 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
                             (c->mode == 2 && !c->norcas) ? &c->dsu[slot] : (c->fx ? &c->dsq[slot] : &c->ds[slot]), 0, NULL);
     if (c->mode == 2 && c->norcas) F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 64, c->easu);   /* EASU straight into the final image */
     else if (c->mode == 2) F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, c->rcasc);   /* RCAS: sharpen at full size */
-    else F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, c->vinfo);
+    else F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, c->epi ? 48 : 16, c->vinfo);
     F.CmdDraw(cb2, 3, 1, 0, 0);
     F.CmdEndRenderPass(cb2);
     if (c->epi && !c->pre) EP.record(c->epi, cb2, (uint64_t)c->fb[fbi], slot);
@@ -658,8 +659,8 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
     } else {
         smi.codeSize = sizeof sgsr_vs_spv; smi.pCode = sgsr_vs_spv;
         ST("create vertex shader", F.CreateShaderModule(d, &smi, NULL, &c->vs));
-        { const char *sq = getenv("LAS_SGSR"); int q = sq && *sq == '2';        /* SGSR Quality: the edge-direction shader, same inputs */
-          smi.codeSize = q ? sizeof sgsrq_fs_spv : sizeof sgsr_fs_spv; smi.pCode = q ? sgsrq_fs_spv : sgsr_fs_spv;
+        { const char *sq = getenv("LAS_SGSR"); int q = sq && *sq == '2'; c->epi = sq && *sq == '3';        /* SGSR Quality: the edge-direction shader, same inputs */
+          smi.codeSize = c->epi ? sizeof episr_fs_spv : q ? sizeof sgsrq_fs_spv : sizeof sgsr_fs_spv; smi.pCode = c->epi ? episr_fs_spv : q ? sgsrq_fs_spv : sgsr_fs_spv;
           LOGI("sgsr: SGSR 1 %s shader", q ? "Quality (edge direction)" : "standard"); }
         ST("create fragment shader", F.CreateShaderModule(d, &smi, NULL, &c->fs));
         ST("create pipeline", mk_pipe(c, c->vs, c->fs, c->rp, c->rect, &c->pipe));
@@ -681,6 +682,13 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
     for (uint32_t i = 0; i < n; i++) ST("create semaphore", F.CreateSemaphore(d, &semi, NULL, &c->sem[i]));
 
     c->vinfo[0] = 1.0f / (float)c->in.width; c->vinfo[1] = 1.0f / (float)c->in.height; c->vinfo[2] = (float)c->in.width; c->vinfo[3] = (float)c->in.height;
+    if (c->epi) {   /* EpiSR tunables: LAS_EPISR="sharp,overshoot,limit,soft,edge,noise,compare" (all floats) */
+        float t[7] = { 2.0f, 0.0f, 23.0f / 255.0f, 0.0f, 8.0f / 255.0f, 0.0f, 0.0f };
+        const char *ev = getenv("LAS_EPISR");
+        if (ev) sscanf(ev, "%f,%f,%f,%f,%f,%f,%f", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6]);
+        c->vinfo[4] = t[0]; c->vinfo[5] = t[1]; c->vinfo[6] = t[2]; c->vinfo[7] = t[3]; c->vinfo[8] = t[4]; c->vinfo[9] = t[5]; c->vinfo[10] = t[6]; c->vinfo[11] = 0;
+        LOGI("sgsr: EpiSR sharp %.2f overshoot %.2f limit %.3f soft %.2f edge %.3f noise %.3f compare %.0f", t[0], t[1], t[2], t[3], t[4], t[5], t[6]);
+    }
     /* FSR 1 constants, the same as FsrEasuCon / FsrRcasCon in ffx_fsr1.h (input size = viewport size here) */
     {
         float iw = (float)c->in.width, ih = (float)c->in.height, ow = (float)c->rect.extent.width, oh = (float)c->rect.extent.height;

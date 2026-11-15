@@ -578,6 +578,41 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun chooseEpiSr(out: TextView) {
+        data class P(val name: String, val max: Int, val fmt: (Int) -> String)
+        val ps = listOf(
+            P("Sharpness (2.00 = SGSR default)", 400) { "%.2f".format(it / 100f) },
+            P("Overshoot (0 = hard clamp, more = softer halos)", 50) { "$it %" },
+            P("Softness (0 = Lanczos, 100 = soft kernel)", 100) { "$it %" },
+            P("Noise floor (0 = off, more = less sharpening on faint texture)", 200) { "%.3f".format(it / 1000f) },
+            P("Edge threshold (/255, SGSR default 8)", 40) { "$it" })
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0) }
+        val bars = ps.mapIndexed { n, p ->
+            val i = if (n < 4) n else 4
+            val bar = M3Seek(this, p.max, Tweaks.epiSr(this, i).coerceIn(0, p.max)) { }
+            val label = TextView(this).apply { setPadding(24, 24, 24, 0) }
+            fun show(v: Int) { label.text = "${p.name}: ${p.fmt(v)}" }
+            show(bar.progress); bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
+            box.addView(label); box.addView(bar); i to bar
+        }
+        val cmp = com.google.android.material.checkbox.MaterialCheckBox(this).apply { text = "Compare: left half of the screen is plain bilinear"; isChecked = Tweaks.epiSr(this@MainActivity, 5) == 1 }
+        box.addView(cmp)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("EpiSR tuning")
+            .setView(android.widget.ScrollView(this).apply { addView(box) })
+            .setPositiveButton("Set") { _, _ ->
+                bars.forEach { (i, b) -> Tweaks.setEpiSr(this, i, b.progress) }
+                Tweaks.setEpiSr(this, 5, if (cmp.isChecked) 1 else 0)
+                out.text = "EpiSR set. Only used when the upscaler is EpiSR. Applies the next time the game starts."
+            }
+            .setNeutralButton("Defaults") { _, _ ->
+                Tweaks.epiDefaults.forEachIndexed { i, v -> Tweaks.setEpiSr(this, i, v) }
+                out.text = "EpiSR back to defaults (same look as SGSR Quality)."
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun toggleStretch(out: TextView) {
         val on = !Tweaks.stretch(this)
         Tweaks.setStretch(this, on)
@@ -828,6 +863,7 @@ class MainActivity : Activity() {
         val rw = Tweaks.resW(this); val rh = Tweaks.resH(this)
         action(b, "Resolution", if (rw > 0 && rh > 0) "$rw x $rh" else "Native") { chooseResolution(outView) }
         action(b, "Upscaler (SGSR / FSR)", Tweaks.upscalers[Tweaks.upscaler(this)].substringBefore(" (")) { chooseUpscaler(outView) }
+        action(b, "EpiSR tuning", "sharpness, softness, compare split") { chooseEpiSr(outView) }
         action(b, "RCAS sharpness (FSR 1)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
         toggle(b, "Ignore notch", "Draws the game under the camera cut-out, so it uses the whole screen. Parts of the game's picture at the edge can be hidden by the notch.",
             { Tweaks.ignoreNotch(this) }) { Tweaks.setIgnoreNotch(this, !Tweaks.ignoreNotch(this)); outView.text = "Ignore notch ${if (Tweaks.ignoreNotch(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
