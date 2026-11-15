@@ -31,7 +31,7 @@ Because the app sits between the game and the GPU, it can also do things the gam
 | | Feature |
 |---|---|
 | 🧩 | **Custom drivers**: load a newer or different Vulkan driver per game |
-| 🔍 | **Upscalers**: render the game at a lower resolution and scale it up with **SGSR 1** or **FSR 1** |
+| 🔍 | **Upscalers**: render the game at a lower resolution and scale it up with **SGSR 1**, **SGSR Quality** (SGSR 1 with edge direction, cleaner diagonal edges, a little dearer) or **FSR 1** |
 | 🎨 | **EpiShaders**: ReShade-style effects (sharpening, anti-aliasing, colour, bloom, CRT and more) on top of any game |
 | ⏩ | **Frame generation**: an in-between frame for every real frame, with the built-in Win-FG engine or, if you import your own `Lossless.dll`, Lossless Scaling's |
 | 🔺 | **OpenGL ES via ANGLE** (experimental): run OpenGL ES games by translating them to Vulkan, through our layer and your custom driver |
@@ -65,6 +65,7 @@ Games that use OpenGL ES never touch Vulkan, so none of the above would apply. W
 The game is told its screen is smaller than it really is (the **Resolution** setting). It renders into private images at that size. When the game presents a frame, the layer creates a real swapchain at the screen's full size and runs a small shader pass that scales the game's image up into it.
 
 - **SGSR 1** (Snapdragon Game Super Resolution): a single-pass upscaler. Flat areas are scaled cheaply; where it detects an edge it does a more careful directional filter. It is the lighter of the two.
+- **SGSR Quality**: the same single pass and inputs as SGSR 1, but with Qualcomm's edge-direction shader, which stretches the filter along the local edge so diagonal edges come out cleaner. It costs somewhat more GPU time than SGSR 1; it is not measured on a phone yet.
 - **FSR 1** (AMD FidelityFX): two passes. **EASU** scales the picture with an edge-adaptive filter into a full-size image, then **RCAS** sharpens it. RCAS strength is a slider; at 0 % the RCAS pass is skipped entirely, which saves a full-screen pass.
 - **Stretch to fit / keep ratio:** keep ratio draws the picture with black bars; stretch fills the screen.
 - **Steady resolution:** some games lower their resolution on their own when busy. This setting stops that.
