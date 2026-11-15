@@ -685,7 +685,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
 
     c->vinfo[0] = 1.0f / (float)c->in.width; c->vinfo[1] = 1.0f / (float)c->in.height; c->vinfo[2] = (float)c->in.width; c->vinfo[3] = (float)c->in.height;
     if (c->e2) {   /* EpiSR 2: LAS_EPISR2="boost,limit,edge,margin,delta limit,compare" */
-        float t[6] = { 1.5f, 0.08f, 0.006f, 0.04f, 0.12f, 0.0f };
+        float t[6] = { 2.0f, 0.02f, 0.004f, 0.15f, 0.12f, 0.0f };
         const char *ev = getenv("LAS_EPISR2");
         if (ev) sscanf(ev, "%f,%f,%f,%f,%f,%f", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5]);
         for (int q = 0; q < 6; q++) c->vinfo[4 + q] = t[q];

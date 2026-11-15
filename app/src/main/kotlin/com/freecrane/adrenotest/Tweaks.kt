@@ -122,9 +122,9 @@ object Tweaks {
     fun epiSrEnv(ctx: Context): String =
         "${epiSr(ctx, 0) / 100f},${epiSr(ctx, 1) / 100f},${23f / 255f},${epiSr(ctx, 2) / 100f},${epiSr(ctx, 4) / 255f},${epiSr(ctx, 3) / 1000f},${epiSr(ctx, 5)}"
     // EpiSR 2 tunables: boost x100, limit x1000, edge threshold x1000, margin x1000, compare 0/1
-    val ep2Defaults = intArrayOf(150, 80, 6, 40, 0)
-    fun ep2(ctx: Context, i: Int): Int = Prefs.get(ctx).getInt("episr2_$i", ep2Defaults[i])
-    fun setEp2(ctx: Context, i: Int, v: Int) { Prefs.get(ctx).edit().putInt("episr2_$i", v).commit() }
+    val ep2Defaults = intArrayOf(200, 20, 4, 150, 0)
+    fun ep2(ctx: Context, i: Int): Int = Prefs.get(ctx).getInt("episr2b_$i", ep2Defaults[i])
+    fun setEp2(ctx: Context, i: Int, v: Int) { Prefs.get(ctx).edit().putInt("episr2b_$i", v).commit() }
     fun ep2Env(ctx: Context): String = "${ep2(ctx, 0) / 100f},${ep2(ctx, 1) / 1000f},${ep2(ctx, 2) / 1000f},${ep2(ctx, 3) / 1000f},0.12,${ep2(ctx, 4)}"
     fun rcasStops(pct: Int): Float = (100 - pct.coerceIn(0, 100)) / 100f * 2f
 

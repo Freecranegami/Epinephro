@@ -6,11 +6,11 @@
 //   2. Edge pixel: a separable Catmull-Rom over the 12 gathered texels. The 4+4 per-axis weights are computed once, each texel uses a product.
 //      No edge direction, no per-texel contrast weights: far fewer ALU ops than SGSR Quality's 12 direction-dependent kernels.
 //   3. The cubic's difference from the bilinear read is boosted with a soft limit d / (1 + |d| / lim), scaled by the gate, kept within the
-//      four centre texels' range plus a margin, and added equally to R, G and B.
+//      four centre texels' range plus a margin (both limits scale with the local range), and added equally to R, G and B.
 layout(set = 0, binding = 0) uniform sampler2D ps0;
 layout(push_constant) uniform PC {
     highp vec4 ViewportInfo;   // 1/w, 1/h, w, h of the input
-    highp vec4 t0;             // boost, limit, edge threshold, margin
+    highp vec4 t0;             // boost, limit (+ half the local range), edge threshold, margin (share of the local range)
     highp vec4 t1;             // delta limit, compare (left half bilinear), 0, 0
 } pc;
 layout(location = 0) in highp vec2 uv;
@@ -61,10 +61,11 @@ void main() {
         float rec = sy / sw;
 
         float det = rec - col.y;
-        float tgt = rec + pc.t0.x * a * det / (1.0 + abs(det) / pc.t0.y);
         float mx = max(max(left.y, left.z), max(right.x, right.w));
         float mn = min(min(left.y, left.z), min(right.x, right.w));
-        tgt = clamp(tgt, mn - pc.t0.w, mx + pc.t0.w);
+        float rng = mx - mn;
+        float tgt = rec + pc.t0.x * a * det / (1.0 + abs(det) / (pc.t0.y + 0.5 * rng));   // the soft limit and the margin scale with the local contrast
+        tgt = clamp(tgt, mn - pc.t0.w * rng, mx + pc.t0.w * rng);
         float delta = clamp(tgt - col.y, -pc.t1.x, pc.t1.x);
         col = clamp(col + vec3(delta), 0.0, 1.0);
     }

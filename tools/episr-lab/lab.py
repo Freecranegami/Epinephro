@@ -223,12 +223,12 @@ def up_mwsr(img, ow, oh, ft=0.005, kwc=0.1, **k):
     out = np.clip(R, np.maximum(mn - mg, 0), mx + mg)
     return np.clip(np.where(e(flat), rM, out), 0, 1)
 
-def _cr(r):
-    """Catmull-Rom weight for distance r (two branches, a few multiply-adds)."""
+def _cr(r, a=-0.5):
+    """Cubic convolution weight (a = -0.5 is Catmull-Rom)."""
     r = np.abs(r); r2 = r * r
-    return np.where(r < 1, 1.5 * r2 * r - 2.5 * r2 + 1, np.where(r < 2, -0.5 * r2 * r + 2.5 * r2 - 4 * r + 2, 0.0))
+    return np.where(r < 1, (a + 2) * r2 * r - (a + 3) * r2 + 1, np.where(r < 2, a * r2 * r - 5 * a * r2 + 8 * a * r - 4 * a, 0.0))
 
-def up_epi2(img, ow, oh, boost=1.5, lim=0.08, edge=0.006, soft=0.04, dlim=0.12, **k):
+def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, **k):
     """EpiSR 2: no edge direction. (1) gate: the range of three reads (two gathered texels and the bilinear read) says whether a pixel is on an
     edge; flat pixels keep the one bilinear read. (2) on an edge, a separable Catmull-Rom over the 12 gathered texels (per-axis weights, computed
     once, products per texel). (3) the cubic's difference from the bilinear read is boosted with a soft limit d/(1+|d|/lim), scaled by the gate,
@@ -239,15 +239,17 @@ def up_epi2(img, ow, oh, boost=1.5, lim=0.08, edge=0.006, soft=0.04, dlim=0.12, 
     hi = np.maximum(np.maximum(v['ly'], v['lz']), gb); lo = np.minimum(np.minimum(v['ly'], v['lz']), gb)
     a = np.clip((hi - lo - edge) / (2 * edge), 0, 1)
     px, py = g.plx, g.ply
-    wx = {-1: _cr(px + 1), 0: _cr(px), 1: _cr(1 - px), 2: _cr(2 - px)}
-    wy = {-2: _cr(py + 1), -1: _cr(py), 0: _cr(1 - py), 1: _cr(2 - py)}
+    wx = {-1: _cr(px + 1, ca), 0: _cr(px, ca), 1: _cr(1 - px, ca), 2: _cr(2 - px, ca)}
+    wy = {-2: _cr(py + 1, ca), -1: _cr(py, ca), 0: _cr(1 - py, ca), 1: _cr(2 - py, ca)}
     sw = 0; sy = 0
     for n, (ti, tj) in TAPS.items():
         w = wx[ti] * wy[tj]; sw = sw + w; sy = sy + w * v[n]
     rec = sy / sw
     det = rec - gb
-    tgt = rec + boost * a * det / (1 + np.abs(det) / lim)
     mx = np.maximum(np.maximum(v['ly'], v['lz']), np.maximum(v['rx'], v['rw'])); mn = np.minimum(np.minimum(v['ly'], v['lz']), np.minimum(v['rx'], v['rw']))
+    L = lim + rlim * (mx - mn)
+    tgt = rec + boost * a * det / (1 + np.abs(det) / L)
+    soft = soft + rsoft * (mx - mn)
     tgt = np.clip(tgt, mn - soft, mx + soft)
     delta = np.clip(tgt - gb, -dlim, dlim)
     return np.clip(np.where((a > 0)[..., None], g.bil + delta[..., None], g.bil), 0, 1)

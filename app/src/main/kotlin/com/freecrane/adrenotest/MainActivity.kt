@@ -616,10 +616,10 @@ class MainActivity : Activity() {
     private fun chooseEpiSr2(out: TextView) {
         data class P(val name: String, val max: Int, val fmt: (Int) -> String)
         val ps = listOf(
-            P("Boost (0 = plain cubic, 1.50 default)", 400) { "%.2f".format(it / 100f) },
-            P("Soft limit (smaller = gentler on strong edges)", 300) { "%.3f".format(it / 1000f) },
+            P("Boost (0 = plain cubic, 2.00 default)", 400) { "%.2f".format(it / 100f) },
+            P("Soft limit (smaller = gentler on strong edges)", 150) { "%.3f".format(it / 1000f) },
             P("Edge threshold (smaller = more pixels sharpened)", 40) { "%.3f".format(it / 1000f) },
-            P("Overshoot margin (0 = hard clamp)", 150) { "%.3f".format(it / 1000f) })
+            P("Overshoot margin (share of local contrast, 0 = hard clamp)", 400) { "%.3f".format(it / 1000f) })
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0) }
         val bars = ps.mapIndexed { i, p ->
             val bar = M3Seek(this, p.max, Tweaks.ep2(this, i).coerceIn(0, p.max)) { }
