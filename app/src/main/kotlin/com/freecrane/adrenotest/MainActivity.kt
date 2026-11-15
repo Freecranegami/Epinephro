@@ -614,19 +614,22 @@ class MainActivity : Activity() {
     }
 
     private fun chooseEpiSr2(out: TextView) {
-        data class P(val name: String, val max: Int, val fmt: (Int) -> String)
+        data class P(val idx: Int, val name: String, val max: Int, val fmt: (Int) -> String)
         val ps = listOf(
-            P("Boost (0 = plain cubic, 2.00 default)", 400) { "%.2f".format(it / 100f) },
-            P("Soft limit (smaller = gentler on strong edges)", 150) { "%.3f".format(it / 1000f) },
-            P("Edge threshold (smaller = more pixels sharpened)", 40) { "%.3f".format(it / 1000f) },
-            P("Overshoot margin (share of local contrast, 0 = hard clamp)", 400) { "%.3f".format(it / 1000f) })
+            P(0, "Edge boost (0 = plain cubic, 2.00 default)", 400) { "%.2f".format(it / 100f) },
+            P(1, "Edge soft limit (smaller = gentler on strong edges)", 150) { "%.3f".format(it / 1000f) },
+            P(2, "Edge threshold (smaller = more pixels count as edges)", 40) { "%.3f".format(it / 1000f) },
+            P(3, "Edge overshoot margin (share of local contrast, 0 = hard clamp)", 400) { "%.3f".format(it / 1000f) },
+            P(5, "Texture sharpness, LumaSharpen style (0 = off, works away from edges)", 400) { "%.2f".format(it / 100f) },
+            P(6, "Texture sharpness clamp (largest change per pixel)", 100) { "%.3f".format(it / 1000f) },
+            P(7, "Texture sharpness reach (1.00 = about one output pixel)", 300) { "%.2f".format(it / 100f) })
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0) }
-        val bars = ps.mapIndexed { i, p ->
-            val bar = M3Seek(this, p.max, Tweaks.ep2(this, i).coerceIn(0, p.max)) { }
+        val bars = ps.map { p ->
+            val bar = M3Seek(this, p.max, Tweaks.ep2(this, p.idx).coerceIn(0, p.max)) { }
             val label = TextView(this).apply { setPadding(24, 24, 24, 0) }
             fun show(v: Int) { label.text = "${p.name}: ${p.fmt(v)}" }
             show(bar.progress); bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
-            box.addView(label); box.addView(bar); i to bar
+            box.addView(label); box.addView(bar); p.idx to bar
         }
         val cmp = com.google.android.material.checkbox.MaterialCheckBox(this).apply { text = "Compare: left half of the screen is plain bilinear"; isChecked = Tweaks.ep2(this@MainActivity, 4) == 1 }
         box.addView(cmp)

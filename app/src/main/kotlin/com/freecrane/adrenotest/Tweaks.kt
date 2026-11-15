@@ -122,10 +122,10 @@ object Tweaks {
     fun epiSrEnv(ctx: Context): String =
         "${epiSr(ctx, 0) / 100f},${epiSr(ctx, 1) / 100f},${23f / 255f},${epiSr(ctx, 2) / 100f},${epiSr(ctx, 4) / 255f},${epiSr(ctx, 3) / 1000f},${epiSr(ctx, 5)}"
     // EpiSR 2 tunables: boost x100, limit x1000, edge threshold x1000, margin x1000, compare 0/1
-    val ep2Defaults = intArrayOf(200, 20, 4, 150, 0)
+    val ep2Defaults = intArrayOf(200, 20, 4, 150, 0, 100, 20, 150)   // 5..7: texture sharpness x100, texture clamp x1000, tap offset x100
     fun ep2(ctx: Context, i: Int): Int = Prefs.get(ctx).getInt("episr2b_$i", ep2Defaults[i])
     fun setEp2(ctx: Context, i: Int, v: Int) { Prefs.get(ctx).edit().putInt("episr2b_$i", v).commit() }
-    fun ep2Env(ctx: Context): String = "${ep2(ctx, 0) / 100f},${ep2(ctx, 1) / 1000f},${ep2(ctx, 2) / 1000f},${ep2(ctx, 3) / 1000f},0.12,${ep2(ctx, 4)}"
+    fun ep2Env(ctx: Context): String = "${ep2(ctx, 0) / 100f},${ep2(ctx, 1) / 1000f},${ep2(ctx, 2) / 1000f},${ep2(ctx, 3) / 1000f},0.12,${ep2(ctx, 4)},${ep2(ctx, 5) / 100f},${ep2(ctx, 6) / 1000f},${ep2(ctx, 7) / 100f}"
     fun rcasStops(pct: Int): Float = (100 - pct.coerceIn(0, 100)) / 100f * 2f
 
     // Frame generation (Lossless Scaling's algorithm, needs the user's Lossless.dll). Default off.

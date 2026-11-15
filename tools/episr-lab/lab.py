@@ -228,12 +228,12 @@ def _cr(r, a=-0.5):
     r = np.abs(r); r2 = r * r
     return np.where(r < 1, (a + 2) * r2 * r - (a + 3) * r2 + 1, np.where(r < 2, a * r2 * r - 5 * a * r2 + 8 * a * r - 4 * a, 0.0))
 
-def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, **k):
+def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, ls=0.0, lclamp=0.035, loff=1.0, lmode=0, **k):
     """EpiSR 2: no edge direction. (1) gate: the range of three reads (two gathered texels and the bilinear read) says whether a pixel is on an
     edge; flat pixels keep the one bilinear read. (2) on an edge, a separable Catmull-Rom over the 12 gathered texels (per-axis weights, computed
     once, products per texel). (3) the cubic's difference from the bilinear read is boosted with a soft limit d/(1+|d|/lim), scaled by the gate,
     and kept within the four centre texels' range +- soft. The delta is added equally to R, G, B like SGSR does."""
-    g = Grid(img, ow, oh)
+    g = Grid(img, ow, oh); h_in, w_in = img.shape[:2]
     v = {n: g.G(*o) for n, o in TAPS.items()}
     gb = g.bil[..., 1]
     hi = np.maximum(np.maximum(v['ly'], v['lz']), gb); lo = np.minimum(np.minimum(v['ly'], v['lz']), gb)
@@ -252,7 +252,16 @@ def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, c
     soft = soft + rsoft * (mx - mn)
     tgt = np.clip(tgt, mn - soft, mx + soft)
     delta = np.clip(tgt - gb, -dlim, dlim)
-    return np.clip(np.where((a > 0)[..., None], g.bil + delta[..., None], g.bil), 0, 1)
+    res = np.where((a > 0)[..., None], g.bil + delta[..., None], g.bil)
+    if ls > 0:                                                   # LumaSharpen-style: bilinear minus the mean of 4 bilinear reads half an output pixel away on the diagonals
+        sx, sy = w_in / ow, h_in / oh
+        o = 0.5 * loff
+        blur = 0.25 * sum(sample_bilinear(img, g.px + dx * o * sx, g.py + dy * o * sy) for dx, dy in ((1, -1), (-1, 1), (-1, -1), (1, 1)))
+        sl = ((g.bil - blur) @ np.array([0.2126, 0.7152, 0.0722], np.float32)) * ls
+        sl = np.clip(sl, -lclamp, lclamp)
+        if lmode == 1: sl = sl * (1 - a)
+        res = res + sl[..., None]
+    return np.clip(res, 0, 1)
 
 UPSCALERS = {
     'bilinear': up_bilinear, 'bicubic': up_bicubic, 'lanczos': up_lanczos,

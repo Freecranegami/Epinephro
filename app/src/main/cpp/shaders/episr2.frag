@@ -5,13 +5,16 @@
 //      A flat pixel keeps the one bilinear read and stops there (one gather, one bilinear).
 //   2. Edge pixel: a separable Catmull-Rom over the 12 gathered texels. The 4+4 per-axis weights are computed once, each texel uses a product.
 //      No edge direction, no per-texel contrast weights: far fewer ALU ops than SGSR Quality's 12 direction-dependent kernels.
+//   4. Texture sharpening in the style of CeeJay.dk's LumaSharpen (bilinear minus the mean of four bilinear reads half an output pixel away on
+//      the diagonals, scaled, clamped, luma-weighted), on every pixel but faded out on edges so it never doubles the edge boost.
 //   3. The cubic's difference from the bilinear read is boosted with a soft limit d / (1 + |d| / lim), scaled by the gate, kept within the
 //      four centre texels' range plus a margin (both limits scale with the local range), and added equally to R, G and B.
 layout(set = 0, binding = 0) uniform sampler2D ps0;
 layout(push_constant) uniform PC {
     highp vec4 ViewportInfo;   // 1/w, 1/h, w, h of the input
     highp vec4 t0;             // boost, limit (+ half the local range), edge threshold, margin (share of the local range)
-    highp vec4 t1;             // delta limit, compare (left half bilinear), 0, 0
+    highp vec4 t1;             // delta limit, compare (left half bilinear), texture sharpness, texture clamp
+    highp vec4 t2;             // texture sharpness tap offset in uv (half an output pixel times the offset setting), 0, 0
 } pc;
 layout(location = 0) in highp vec2 uv;
 layout(location = 0) out vec4 out_Target0;
@@ -26,6 +29,7 @@ float cr(float r) {
 
 void main() {
     vec3 col = textureLod(ps0, uv, 0.0).xyz;
+    vec3 bil = col;
     if (pc.t1.y > 0.5 && uv.x < 0.5) { out_Target0 = vec4(col, 1.0); return; }
 
     highp vec2 imgCoord = (uv * pc.ViewportInfo.zw) + vec2(-0.5, 0.5);
@@ -68,6 +72,13 @@ void main() {
         tgt = clamp(tgt, mn - pc.t0.w * rng, mx + pc.t0.w * rng);
         float delta = clamp(tgt - col.y, -pc.t1.x, pc.t1.x);
         col = clamp(col + vec3(delta), 0.0, 1.0);
+    }
+    if (pc.t1.z > 0.0) {   // LumaSharpen-style texture sharpening, weaker the more the pixel is an edge
+        vec2 o = pc.t2.xy;
+        vec3 bl = textureLod(ps0, uv + vec2(o.x, -o.y), 0.0).xyz + textureLod(ps0, uv + vec2(-o.x, o.y), 0.0).xyz
+                + textureLod(ps0, uv - o, 0.0).xyz + textureLod(ps0, uv + o, 0.0).xyz;
+        float sl = dot(bil - 0.25 * bl, vec3(0.2126, 0.7152, 0.0722)) * pc.t1.z;
+        col = clamp(col + vec3(clamp(sl, -pc.t1.w, pc.t1.w) * (1.0 - a)), 0.0, 1.0);
     }
     out_Target0 = vec4(col, 1.0);
 }
