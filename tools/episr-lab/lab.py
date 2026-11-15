@@ -263,9 +263,64 @@ def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, c
         res = res + sl[..., None]
     return np.clip(res, 0, 1)
 
+def up_fsr1(img, ow, oh, rcas_stops=0.2, **k):
+    """AMD FSR 1: EASU (12-tap edge-adaptive Lanczos-like) then RCAS (5-tap sharpen) at output size, ported from ffx_fsr1.h with exact reciprocals.
+    rcas_stops = the app's setting (0.2 = RCAS 90 %), None skips RCAS."""
+    h, w = img.shape[:2]
+    ox, oy = np.meshgrid(np.arange(ow), np.arange(oh))
+    ppx = (ox + 0.5) * w / ow - 0.5; ppy = (oy + 0.5) * h / oh - 0.5
+    fx = np.floor(ppx).astype(np.int32); fy = np.floor(ppy).astype(np.int32)
+    px = (ppx - fx).astype(np.float32); py = (ppy - fy).astype(np.float32)
+    T = lambda di, dj: img[np.clip(fy + dj, 0, h - 1), np.clip(fx + di, 0, w - 1)]
+    pos = {'b': (0, -1), 'c': (1, -1), 'e': (-1, 0), 'f': (0, 0), 'g': (1, 0), 'h': (2, 0), 'i': (-1, 1), 'j': (0, 1), 'k': (1, 1), 'l': (2, 1), 'n': (0, 2), 'o': (1, 2)}
+    C = {n: T(*p) for n, p in pos.items()}
+    L = {n: C[n][..., 2] * 0.5 + C[n][..., 0] * 0.5 + C[n][..., 1] for n in C}
+    rcp = lambda x: 1.0 / np.maximum(x, 1e-12)
+    dirx = np.zeros_like(px); diry = np.zeros_like(px); ln = np.zeros_like(px)
+    def setacc(w_, lA, lB, lC, lD, lE):
+        nonlocal dirx, diry, ln
+        lenx = rcp(np.maximum(np.abs(lD - lC), np.abs(lC - lB))); dX = lD - lB; dirx = dirx + dX * w_
+        lenx = np.clip(np.abs(dX) * lenx, 0, 1) ** 2; ln = ln + lenx * w_
+        leny = rcp(np.maximum(np.abs(lE - lC), np.abs(lC - lA))); dY = lE - lA; diry = diry + dY * w_
+        leny = np.clip(np.abs(dY) * leny, 0, 1) ** 2; ln = ln + leny * w_
+    setacc((1 - px) * (1 - py), L['b'], L['e'], L['f'], L['g'], L['j'])
+    setacc(px * (1 - py), L['c'], L['f'], L['g'], L['h'], L['k'])
+    setacc((1 - px) * py, L['f'], L['i'], L['j'], L['k'], L['n'])
+    setacc(px * py, L['g'], L['j'], L['k'], L['l'], L['o'])
+    d2 = dirx * dirx + diry * diry
+    zro = d2 < 1.0 / 32768.0
+    dr = np.where(zro, 1.0, 1.0 / np.sqrt(np.maximum(d2, 1e-12)))
+    dirx = np.where(zro, 1.0, dirx) * dr; diry = diry * dr
+    ln = (ln * 0.5) ** 2
+    stretch = (dirx * dirx + diry * diry) * rcp(np.maximum(np.abs(dirx), np.abs(diry)))
+    len2x = 1 + (stretch - 1) * ln; len2y = 1 - 0.5 * ln
+    lob = 0.5 + ((0.25 - 0.04) - 0.5) * ln
+    clp = rcp(lob)
+    ac = np.zeros_like(C['f']); aw = np.zeros_like(px)
+    for n, (ti, tj) in pos.items():
+        offx = ti - px; offy = tj - py
+        vx = offx * dirx + offy * diry; vy = offx * (-diry) + offy * dirx
+        vx = vx * len2x; vy = vy * len2y
+        dd = np.minimum(vx * vx + vy * vy, clp)
+        wb = (2.0 / 5.0 * dd - 1) ** 2; wa = (lob * dd - 1) ** 2
+        wb = 25.0 / 16.0 * wb - (25.0 / 16.0 - 1)
+        wt = wb * wa
+        ac = ac + C[n] * wt[..., None]; aw = aw + wt
+    mn = np.minimum(np.minimum(C['f'], C['g']), np.minimum(C['j'], C['k'])); mx = np.maximum(np.maximum(C['f'], C['g']), np.maximum(C['j'], C['k']))
+    easu = np.minimum(mx, np.maximum(mn, ac / aw[..., None]))
+    if rcas_stops is None: return np.clip(easu, 0, 1)
+    P = np.pad(easu, ((1, 1), (1, 1), (0, 0)), mode='edge')
+    b_, d_, e_, f_, h_ = P[:-2, 1:-1], P[1:-1, :-2], P[1:-1, 1:-1], P[1:-1, 2:], P[2:, 1:-1]
+    mn4 = np.minimum(np.minimum(np.minimum(b_, d_), f_), h_); mx4 = np.maximum(np.maximum(np.maximum(b_, d_), f_), h_)
+    hitmin = np.minimum(mn4, e_) / (4 * np.maximum(mx4, 1e-6)); hitmax = (1 - np.maximum(mx4, e_)) / (4 * mn4 - 4.0 + 1e-9)
+    lobe_c = np.maximum(-hitmin, hitmax)
+    lobe = np.maximum(-(0.25 - 1 / 16.0), np.minimum(lobe_c.max(axis=2), 0.0)) * (2.0 ** -rcas_stops)
+    out = (lobe[..., None] * (b_ + d_ + h_ + f_) + e_) / (4 * lobe[..., None] + 1)
+    return np.clip(out, 0, 1)
+
 UPSCALERS = {
     'bilinear': up_bilinear, 'bicubic': up_bicubic, 'lanczos': up_lanczos,
-    'sgsr1': up_sgsr1, 'sgsrq': up_sgsrq, 'episr1': up_episr1, 'episr2': up_episr2, 'mwsr': up_mwsr, 'epi2': up_epi2,
+    'sgsr1': up_sgsr1, 'sgsrq': up_sgsrq, 'episr1': up_episr1, 'episr2': up_episr2, 'mwsr': up_mwsr, 'epi2': up_epi2, 'fsr1': up_fsr1, 'fsr1_easu': lambda i, w, h, **k: up_fsr1(i, w, h, rcas_stops=None),
 }
 
 # ---------- metrics ----------
