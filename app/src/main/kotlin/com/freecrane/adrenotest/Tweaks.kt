@@ -104,10 +104,10 @@ object Tweaks {
 
     // Upscaler: the game renders smaller than the screen (the Resolution set here, or the game's own resolution option)
     // and the picture is upscaled to the screen: 0 = off, 1 = Snapdragon Game Super Resolution 1, 2 = AMD FSR 1 (EASU + RCAS), 3 = SGSR Quality (SGSR 1 edge-direction variant).
-    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "EpiSR (Epinephro, experimental, tunable)")
+    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "EpiSR (Epinephro, experimental, tunable)", "MWSR (MoonlightWeb Super Resolution)")
     fun upscaler(ctx: Context): Int {
         val p = Prefs.get(ctx)
-        return p.getInt("upscaler", if (p.getBoolean("sgsr", false)) 1 else 0).coerceIn(0, 4)
+        return p.getInt("upscaler", if (p.getBoolean("sgsr", false)) 1 else 0).coerceIn(0, 5)
     }
     fun setUpscaler(ctx: Context, i: Int) { Prefs.get(ctx).edit().putInt("upscaler", i).commit() }
 
@@ -198,7 +198,7 @@ object Tweaks {
             Os.setenv("LAS_DRS", if (drsLock(ctx)) "1" else "0", true)
             Os.setenv("LAS_DEPTHDIAG", if (depthDiag(ctx)) "1" else "0", true)
             val up = upscaler(ctx)
-            Os.setenv("LAS_SGSR", if (up == 1) "1" else if (up == 3) "2" else if (up == 4) "3" else "0", true)
+            Os.setenv("LAS_SGSR", if (up == 1) "1" else if (up == 3) "2" else if (up == 4) "3" else if (up == 5) "4" else "0", true)
             Os.setenv("LAS_FSR", if (up == 2) "1" else "0", true)
             Os.setenv("LAS_KEEP", if (stretch(ctx)) "0" else "1", true)
             Os.setenv("LAS_EPISR", epiSrEnv(ctx), true)
