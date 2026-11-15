@@ -613,6 +613,39 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun chooseEpiSr2(out: TextView) {
+        data class P(val name: String, val max: Int, val fmt: (Int) -> String)
+        val ps = listOf(
+            P("Boost (0 = plain cubic, 1.50 default)", 400) { "%.2f".format(it / 100f) },
+            P("Soft limit (smaller = gentler on strong edges)", 300) { "%.3f".format(it / 1000f) },
+            P("Edge threshold (smaller = more pixels sharpened)", 40) { "%.3f".format(it / 1000f) },
+            P("Overshoot margin (0 = hard clamp)", 150) { "%.3f".format(it / 1000f) })
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0) }
+        val bars = ps.mapIndexed { i, p ->
+            val bar = M3Seek(this, p.max, Tweaks.ep2(this, i).coerceIn(0, p.max)) { }
+            val label = TextView(this).apply { setPadding(24, 24, 24, 0) }
+            fun show(v: Int) { label.text = "${p.name}: ${p.fmt(v)}" }
+            show(bar.progress); bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
+            box.addView(label); box.addView(bar); i to bar
+        }
+        val cmp = com.google.android.material.checkbox.MaterialCheckBox(this).apply { text = "Compare: left half of the screen is plain bilinear"; isChecked = Tweaks.ep2(this@MainActivity, 4) == 1 }
+        box.addView(cmp)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("EpiSR 2 tuning")
+            .setView(android.widget.ScrollView(this).apply { addView(box) })
+            .setPositiveButton("Set") { _, _ ->
+                bars.forEach { (i, b) -> Tweaks.setEp2(this, i, b.progress) }
+                Tweaks.setEp2(this, 4, if (cmp.isChecked) 1 else 0)
+                out.text = "EpiSR 2 set. Only used when the upscaler is EpiSR 2. Applies the next time the game starts."
+            }
+            .setNeutralButton("Defaults") { _, _ ->
+                Tweaks.ep2Defaults.forEachIndexed { i, v -> Tweaks.setEp2(this, i, v) }
+                out.text = "EpiSR 2 back to defaults."
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun toggleStretch(out: TextView) {
         val on = !Tweaks.stretch(this)
         Tweaks.setStretch(this, on)
@@ -863,6 +896,7 @@ class MainActivity : Activity() {
         val rw = Tweaks.resW(this); val rh = Tweaks.resH(this)
         action(b, "Resolution", if (rw > 0 && rh > 0) "$rw x $rh" else "Native") { chooseResolution(outView) }
         action(b, "Upscaler (SGSR / FSR)", Tweaks.upscalers[Tweaks.upscaler(this)].substringBefore(" (")) { chooseUpscaler(outView) }
+        action(b, "EpiSR 2 tuning", "boost, limit, edge, compare split") { chooseEpiSr2(outView) }
         action(b, "EpiSR tuning", "sharpness, softness, compare split") { chooseEpiSr(outView) }
         action(b, "RCAS sharpness (FSR 1)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
         toggle(b, "Ignore notch", "Draws the game under the camera cut-out, so it uses the whole screen. Parts of the game's picture at the edge can be hidden by the notch.",

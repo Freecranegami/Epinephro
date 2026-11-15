@@ -104,10 +104,10 @@ object Tweaks {
 
     // Upscaler: the game renders smaller than the screen (the Resolution set here, or the game's own resolution option)
     // and the picture is upscaled to the screen: 0 = off, 1 = Snapdragon Game Super Resolution 1, 2 = AMD FSR 1 (EASU + RCAS), 3 = SGSR Quality (SGSR 1 edge-direction variant).
-    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "EpiSR (Epinephro, experimental, tunable)", "MWSR (MoonlightWeb Super Resolution)")
+    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "EpiSR (Epinephro, experimental, tunable)", "MWSR (MoonlightWeb Super Resolution)", "EpiSR 2 (Epinephro, cubic with edge gate)")
     fun upscaler(ctx: Context): Int {
         val p = Prefs.get(ctx)
-        return p.getInt("upscaler", if (p.getBoolean("sgsr", false)) 1 else 0).coerceIn(0, 5)
+        return p.getInt("upscaler", if (p.getBoolean("sgsr", false)) 1 else 0).coerceIn(0, 6)
     }
     fun setUpscaler(ctx: Context, i: Int) { Prefs.get(ctx).edit().putInt("upscaler", i).commit() }
 
@@ -121,6 +121,11 @@ object Tweaks {
     fun setEpiSr(ctx: Context, i: Int, v: Int) { Prefs.get(ctx).edit().putInt("episr_$i", v).commit() }
     fun epiSrEnv(ctx: Context): String =
         "${epiSr(ctx, 0) / 100f},${epiSr(ctx, 1) / 100f},${23f / 255f},${epiSr(ctx, 2) / 100f},${epiSr(ctx, 4) / 255f},${epiSr(ctx, 3) / 1000f},${epiSr(ctx, 5)}"
+    // EpiSR 2 tunables: boost x100, limit x1000, edge threshold x1000, margin x1000, compare 0/1
+    val ep2Defaults = intArrayOf(150, 80, 6, 40, 0)
+    fun ep2(ctx: Context, i: Int): Int = Prefs.get(ctx).getInt("episr2_$i", ep2Defaults[i])
+    fun setEp2(ctx: Context, i: Int, v: Int) { Prefs.get(ctx).edit().putInt("episr2_$i", v).commit() }
+    fun ep2Env(ctx: Context): String = "${ep2(ctx, 0) / 100f},${ep2(ctx, 1) / 1000f},${ep2(ctx, 2) / 1000f},${ep2(ctx, 3) / 1000f},0.12,${ep2(ctx, 4)}"
     fun rcasStops(pct: Int): Float = (100 - pct.coerceIn(0, 100)) / 100f * 2f
 
     // Frame generation (Lossless Scaling's algorithm, needs the user's Lossless.dll). Default off.
@@ -198,10 +203,11 @@ object Tweaks {
             Os.setenv("LAS_DRS", if (drsLock(ctx)) "1" else "0", true)
             Os.setenv("LAS_DEPTHDIAG", if (depthDiag(ctx)) "1" else "0", true)
             val up = upscaler(ctx)
-            Os.setenv("LAS_SGSR", if (up == 1) "1" else if (up == 3) "2" else if (up == 4) "3" else if (up == 5) "4" else "0", true)
+            Os.setenv("LAS_SGSR", if (up == 1) "1" else if (up == 3) "2" else if (up == 4) "3" else if (up == 5) "4" else if (up == 6) "5" else "0", true)
             Os.setenv("LAS_FSR", if (up == 2) "1" else "0", true)
             Os.setenv("LAS_KEEP", if (stretch(ctx)) "0" else "1", true)
             Os.setenv("LAS_EPISR", epiSrEnv(ctx), true)
+            Os.setenv("LAS_EPISR2", ep2Env(ctx), true)
             Os.setenv("LAS_RCAS", rcasStops(rcasPercent(ctx)).toString(), true)
             Os.setenv("LAS_CAS", "0", true)
             if (angle(ctx)) {

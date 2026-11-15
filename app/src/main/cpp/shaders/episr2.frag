@@ -1,0 +1,72 @@
+#version 450
+// EpiSR 2 = Epinephro's own spatial upscaler. Original work, no code from SGSR/FSR (it only reuses SGSR's texel-gather layout so the vertex
+// shader and push-constant block are shared). Reference implementation and tuning: episr-lab/lab.py (up_epi2).
+//   1. Gate: the range of three reads (two gathered green texels and the hardware bilinear read) tells if the pixel is on an edge.
+//      A flat pixel keeps the one bilinear read and stops there (one gather, one bilinear).
+//   2. Edge pixel: a separable Catmull-Rom over the 12 gathered texels. The 4+4 per-axis weights are computed once, each texel uses a product.
+//      No edge direction, no per-texel contrast weights: far fewer ALU ops than SGSR Quality's 12 direction-dependent kernels.
+//   3. The cubic's difference from the bilinear read is boosted with a soft limit d / (1 + |d| / lim), scaled by the gate, kept within the
+//      four centre texels' range plus a margin, and added equally to R, G and B.
+layout(set = 0, binding = 0) uniform sampler2D ps0;
+layout(push_constant) uniform PC {
+    highp vec4 ViewportInfo;   // 1/w, 1/h, w, h of the input
+    highp vec4 t0;             // boost, limit, edge threshold, margin
+    highp vec4 t1;             // delta limit, compare (left half bilinear), 0, 0
+} pc;
+layout(location = 0) in highp vec2 uv;
+layout(location = 0) out vec4 out_Target0;
+
+precision mediump float;
+
+// Catmull-Rom, r >= 0
+float cr(float r) {
+    float r2 = r * r;
+    return r < 1.0 ? (1.5 * r - 2.5) * r2 + 1.0 : ((-0.5 * r + 2.5) * r - 4.0) * r + 2.0;
+}
+
+void main() {
+    vec3 col = textureLod(ps0, uv, 0.0).xyz;
+    if (pc.t1.y > 0.5 && uv.x < 0.5) { out_Target0 = vec4(col, 1.0); return; }
+
+    highp vec2 imgCoord = (uv * pc.ViewportInfo.zw) + vec2(-0.5, 0.5);
+    highp vec2 imgCoordPixel = floor(imgCoord);
+    highp vec2 coord = imgCoordPixel * pc.ViewportInfo.xy;
+    vec2 pl = imgCoord - imgCoordPixel;
+    vec4 left = textureGather(ps0, coord, 1);
+
+    highp float hi = max(max(left.y, left.z), col.y);
+    highp float lo = min(min(left.y, left.z), col.y);
+    highp float edge = pc.t0.z;
+    float a = clamp((hi - lo - edge) / (2.0 * edge), 0.0, 1.0);
+    if (a > 0.0) {
+        coord.x += pc.ViewportInfo.x;
+        vec4 right = textureGather(ps0, coord + vec2(pc.ViewportInfo.x, 0.0), 1);
+        vec4 ud;
+        ud.xy = textureGather(ps0, coord + vec2(0.0, -pc.ViewportInfo.y), 1).wz;   // texels (0,-2), (1,-2)
+        ud.zw = textureGather(ps0, coord + vec2(0.0, pc.ViewportInfo.y), 1).yx;    // texels (1, 1), (0, 1)
+
+        // per-axis weights; columns -1, 0, 1, 2 and rows -2, -1, 0, 1 around the 2x2 centre
+        float wx0 = cr(pl.x + 1.0), wx1 = cr(pl.x), wx2 = cr(1.0 - pl.x), wx3 = cr(2.0 - pl.x);
+        float wy0 = cr(pl.y + 1.0), wy1 = cr(pl.y), wy2 = cr(1.0 - pl.y), wy3 = cr(2.0 - pl.y);
+        // texels: left.x(-1,0) left.y(0,0) left.z(0,-1) left.w(-1,-1) right.x(1,0) right.y(2,0) right.z(2,-1) right.w(1,-1)
+        //         ud.x(0,-2) ud.y(1,-2) ud.z(1,1) ud.w(0,1)
+        float sw = wx1 * wy0 + wx2 * wy0                                 // row -2: columns 0, 1
+                 + wx0 * wy1 + wx1 * wy1 + wx2 * wy1 + wx3 * wy1         // row -1: columns -1..2
+                 + wx0 * wy2 + wx1 * wy2 + wx2 * wy2 + wx3 * wy2         // row  0: columns -1..2
+                 + wx1 * wy3 + wx2 * wy3;                                // row  1: columns 0, 1
+        float sy = wy0 * (wx1 * ud.x + wx2 * ud.y)
+                 + wy1 * (wx0 * left.w + wx1 * left.z + wx2 * right.w + wx3 * right.z)
+                 + wy2 * (wx0 * left.x + wx1 * left.y + wx2 * right.x + wx3 * right.y)
+                 + wy3 * (wx1 * ud.w + wx2 * ud.z);
+        float rec = sy / sw;
+
+        float det = rec - col.y;
+        float tgt = rec + pc.t0.x * a * det / (1.0 + abs(det) / pc.t0.y);
+        float mx = max(max(left.y, left.z), max(right.x, right.w));
+        float mn = min(min(left.y, left.z), min(right.x, right.w));
+        tgt = clamp(tgt, mn - pc.t0.w, mx + pc.t0.w);
+        float delta = clamp(tgt - col.y, -pc.t1.x, pc.t1.x);
+        col = clamp(col + vec3(delta), 0.0, 1.0);
+    }
+    out_Target0 = vec4(col, 1.0);
+}
