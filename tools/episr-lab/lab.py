@@ -228,7 +228,7 @@ def _cr(r, a=-0.5):
     r = np.abs(r); r2 = r * r
     return np.where(r < 1, (a + 2) * r2 * r - (a + 3) * r2 + 1, np.where(r < 2, a * r2 * r - 5 * a * r2 + 8 * a * r - 4 * a, 0.0))
 
-def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, ls=0.0, lclamp=0.035, loff=1.0, lmode=0, lcas=0.0, lfloor=0.0, **k):
+def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, ls=0.0, lclamp=0.035, loff=1.0, lmode=0, lcas=0.0, lfloor=0.0, steep=0.0, steepk=1.0, steepg=0.0, **k):
     """EpiSR 2: no edge direction. (1) gate: the range of three reads (two gathered texels and the bilinear read) says whether a pixel is on an
     edge; flat pixels keep the one bilinear read. (2) on an edge, a separable Catmull-Rom over the 12 gathered texels (per-axis weights, computed
     once, products per texel). (3) the cubic's difference from the bilinear read is boosted with a soft limit d/(1+|d|/lim), scaled by the gate,
@@ -250,6 +250,11 @@ def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, c
     L = lim + rlim * (mx - mn)
     tgt = rec + boost * a * det / (1 + np.abs(det) / L)
     soft = soft + rsoft * (mx - mn)
+    if steep > 0:                                                # edge steepening: S-curve of the value inside the local range pushes mid-edge values to the ends
+        rg = np.maximum(mx - mn, 1e-4); t_ = np.clip((tgt - mn) / rg, 0, 1)
+        t2 = np.clip(0.5 + (t_ - 0.5) * steepg, 0, 1) if steepg > 0 else t_ * t_ * (3 - 2 * t_)
+        wgt = steep * a * np.clip(rg / steepk, 0, 1)
+        tgt = np.where(rg > 1e-4, mn + rg * (t_ + wgt * (t2 - t_)) + (tgt - np.clip(tgt, mn, mx)), tgt)
     tgt = np.clip(tgt, mn - soft, mx + soft)
     delta = np.clip(tgt - gb, -dlim, dlim)
     res = np.where((a > 0)[..., None], g.bil + delta[..., None], g.bil)
@@ -326,9 +331,45 @@ def up_fsr1(img, ow, oh, rcas_stops=0.2, **k):
     out = (lobe[..., None] * (b_ + d_ + h_ + f_) + e_) / (4 * lobe[..., None] + 1)
     return np.clip(out, 0, 1)
 
+def _edge_field(img, ow, oh, sig=1.0):
+    """Edge orientation field from the low-res image (structure tensor, Gaussian-smoothed), bilinearly upsampled to output size.
+    Returns tangent unit vector (tx, ty) in input-pixel units and coherence 0..1."""
+    y = img @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    gx = cv2.Sobel(y, cv2.CV_32F, 1, 0, ksize=3) / 8; gy = cv2.Sobel(y, cv2.CV_32F, 0, 1, ksize=3) / 8
+    jxx = cv2.GaussianBlur(gx * gx, (0, 0), sig); jyy = cv2.GaussianBlur(gy * gy, (0, 0), sig); jxy = cv2.GaussianBlur(gx * gy, (0, 0), sig)
+    up = lambda a: cv2.resize(a, (ow, oh), interpolation=cv2.INTER_LINEAR)
+    jxx, jyy, jxy = up(jxx), up(jyy), up(jxy)
+    tr = jxx + jyy; dis = np.sqrt((jxx - jyy) ** 2 + 4 * jxy * jxy)
+    coh = dis / (tr + 1e-6); energy = np.sqrt(tr)
+    th = 0.5 * np.arctan2(2 * jxy, jxx - jyy)            # normal direction
+    return -np.sin(th), np.cos(th), coh, energy           # tangent = normal rotated by 90 degrees
+
+def up_epi3(img, ow, oh, smooth=1.0, reach=0.8, cthr=0.5, ethr=0.01, boost=2.0, lim=0.02, edge=0.004, rlim=0.5, rsoft=0.15, **k):
+    """Experiment: EpiSR 2 with the cubic reconstruction smoothed ALONG the detected edge direction (potential, using full bicubic remaps)."""
+    h, w = img.shape[:2]
+    g = Grid(img, ow, oh); v = {n: g.G(*o) for n, o in TAPS.items()}; gb = g.bil[..., 1]
+    tx, ty, coh, en = _edge_field(img, ow, oh)
+    a_dir = np.clip((coh - cthr) / (1 - cthr), 0, 1) * np.clip(en / ethr, 0, 1) * smooth
+    def cub(dx, dy):
+        mx_ = (g.px + dx - 0.5).astype(np.float32); my_ = (g.py + dy - 0.5).astype(np.float32)
+        return cv2.remap(img, mx_, my_, cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    c0 = cub(0, 0); cp = cub(tx * reach, ty * reach); cm = cub(-tx * reach, -ty * reach)
+    rec3 = (1 - a_dir[..., None]) * c0 + a_dir[..., None] * (0.5 * c0 + 0.25 * (cp + cm))
+    rec = rec3[..., 1]
+    hi = np.maximum(np.maximum(v['ly'], v['lz']), gb); lo = np.minimum(np.minimum(v['ly'], v['lz']), gb)
+    a = np.clip((hi - lo - edge) / (2 * edge), 0, 1)
+    det = rec - gb
+    mx = np.maximum(np.maximum(v['ly'], v['lz']), np.maximum(v['rx'], v['rw'])); mn = np.minimum(np.minimum(v['ly'], v['lz']), np.minimum(v['rx'], v['rw']))
+    L = lim + rlim * (mx - mn)
+    tgt = rec + boost * a * det / (1 + np.abs(det) / L)
+    sf = rsoft * (mx - mn)
+    tgt = np.clip(tgt, mn - sf, mx + sf)
+    delta = np.clip(tgt - gb, -0.12, 0.12)
+    return np.clip(np.where((a > 0)[..., None], g.bil + delta[..., None], g.bil), 0, 1)
+
 UPSCALERS = {
     'bilinear': up_bilinear, 'bicubic': up_bicubic, 'lanczos': up_lanczos,
-    'sgsr1': up_sgsr1, 'sgsrq': up_sgsrq, 'episr1': up_episr1, 'episr2': up_episr2, 'mwsr': up_mwsr, 'epi2': up_epi2, 'fsr1': up_fsr1, 'fsr1_easu': lambda i, w, h, **k: up_fsr1(i, w, h, rcas_stops=None),
+    'sgsr1': up_sgsr1, 'sgsrq': up_sgsrq, 'episr1': up_episr1, 'episr2': up_episr2, 'mwsr': up_mwsr, 'epi2': up_epi2, 'epi3': up_epi3, 'fsr1': up_fsr1, 'fsr1_easu': lambda i, w, h, **k: up_fsr1(i, w, h, rcas_stops=None),
 }
 
 # ---------- metrics ----------
