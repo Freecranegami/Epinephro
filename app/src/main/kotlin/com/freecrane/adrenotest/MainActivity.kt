@@ -697,13 +697,15 @@ class MainActivity : Activity() {
         fun show(p: Int) { label.text = "Flow scale: ${"%.2f".format(java.util.Locale.US, p * 0.05)}  (lower = faster but rougher motion; values below 0.25 run as 0.25)" }
         show(bar.progress)
         bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0); addView(group); addView(label); addView(bar) }
+        val half = android.widget.CheckBox(this).apply { text = "Half precision shaders (experimental, Lossless only; falls back to 32-bit if the DLL has none)"; isChecked = Tweaks.lsfgHalf(ctx); setPadding(48, 24, 48, 0) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0); addView(group); addView(label); addView(bar); addView(half) }
         MaterialAlertDialogBuilder(this)
             .setTitle("Lossless Scaling settings")
             .setView(box)
             .setPositiveButton("Set") { _, _ ->
                 Tweaks.setLsfgQuality(this, group.checkedRadioButtonId == 101)
                 Tweaks.setLsfgFlowSteps(this, bar.progress)
+                Tweaks.setLsfgHalf(this, half.isChecked)
                 out.text = "Lossless Scaling: ${if (Tweaks.lsfgQuality(this)) "quality" else "performance"} mode, flow scale ${"%.2f".format(java.util.Locale.US, bar.progress * 0.05)}. Applies the next time the game starts."
             }
             .setNegativeButton("Cancel", null)

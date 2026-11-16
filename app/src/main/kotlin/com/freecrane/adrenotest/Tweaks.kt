@@ -157,6 +157,8 @@ object Tweaks {
     fun fgReady(ctx: Context): Boolean = fgEngine(ctx) == 1 || Lsfg.installed(ctx)
     fun lsfgQuality(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("lsfg_quality", false)
     fun setLsfgQuality(ctx: Context, q: Boolean) { Prefs.get(ctx).edit().putBoolean("lsfg_quality", q).commit() }
+    fun lsfgHalf(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("lsfg_half", false)
+    fun setLsfgHalf(ctx: Context, v: Boolean) = Prefs.get(ctx).edit().putBoolean("lsfg_half", v).apply()
     fun lsfgFlowSteps(ctx: Context): Int = Prefs.get(ctx).getInt("lsfg_flow", 10).coerceIn(0, 20)
     fun setLsfgFlowSteps(ctx: Context, s: Int) { Prefs.get(ctx).edit().putInt("lsfg_flow", s.coerceIn(0, 20)).commit() }
 
@@ -198,6 +200,7 @@ object Tweaks {
             Os.setenv("LAS_WFG_PRESET", wfgPreset(ctx).toString(), true)
             Os.setenv("LAS_WFG_GM", wfgGm(ctx).toString(), true)
             Os.setenv("LAS_WFG_HUD", wfgHud(ctx), true)
+            Os.setenv("LAS_LSFG_FP16", if (lsfgHalf(ctx)) "1" else "0", true)
             Os.setenv("LAS_LSFG_PERF", if (lsfgQuality(ctx)) "0" else "1", true)
             Os.setenv("LAS_LSFG_FLOW", "%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05), true)
             Os.setenv("LAS_DRS", if (drsLock(ctx)) "1" else "0", true)

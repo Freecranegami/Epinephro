@@ -1,3 +1,4 @@
+#include <cstring>
 #include "extract.hpp"
 
 #include <pe-parse/parse.h>
@@ -134,4 +135,58 @@ std::vector<uint8_t> Extract::getShader(const std::string& name) {
         throw std::runtime_error("Shader not found: " + name);
 
     return sit->second;
+}
+
+std::vector<uint8_t> Extract::getShaderFp16(const std::string& name) {
+    auto hit = nameIdxTable.find(name);
+    if (hit == nameIdxTable.end()) return {};
+    auto sit = shaders().find(hit->second + 49);
+    if (sit == shaders().end() || sit->second.size() < 20) return {};
+    uint32_t magic; std::memcpy(&magic, sit->second.data(), 4);
+    if (magic != 0x07230203u) return {};
+    return sit->second;
+}
+
+std::string Extract::resourceSummary() {
+    size_t n = 0, spv = 0, lo = 0, hi = 0; bool any = false;
+    for (const auto& [id, data] : shaders()) {
+        if (id < 250 || id > 360) continue;
+        n++; if (!any || id < lo) lo = id; if (!any || id > hi) hi = id; any = true;
+        uint32_t m = 0; if (data.size() >= 4) std::memcpy(&m, data.data(), 4);
+        if (m == 0x07230203u) spv++;
+    }
+    return std::to_string(n) + " resources with ids " + std::to_string(lo) + ".." + std::to_string(hi) + " (ids 250..360), " + std::to_string(spv) + " of them SPIR-V";
+}
+
+namespace {
+    // set/binding pairs and Float16 capability of a SPIR-V module
+    struct SpvInfo { std::vector<std::pair<uint32_t, uint32_t>> sb; bool f16 = false; bool ok = false; };
+    SpvInfo scan(const std::vector<uint8_t>& b) {
+        SpvInfo r; if (b.size() < 20 || b.size() % 4) return r;
+        std::vector<uint32_t> w(b.size() / 4); std::memcpy(w.data(), b.data(), b.size());
+        if (w[0] != 0x07230203u) return r;
+        std::unordered_map<uint32_t, uint32_t> set, bind;
+        for (size_t i = 5; i < w.size();) {
+            uint32_t op = w[i] & 0xFFFF, len = w[i] >> 16;
+            if (len == 0 || i + len > w.size()) return r;
+            if (op == 17 && len >= 2 && w[i + 1] == 9) r.f16 = true;                          // OpCapability Float16
+            if (op == 71 && len >= 4) {                                                      // OpDecorate
+                if (w[i + 2] == 33) bind[w[i + 1]] = w[i + 3];                               // Binding
+                if (w[i + 2] == 34) set[w[i + 1]] = w[i + 3];                                // DescriptorSet
+            }
+            if (op == 54) break;                                                             // OpFunction: decorations are done
+            i += len;
+        }
+        for (auto& [id, bd] : bind) r.sb.push_back({ set.count(id) ? set[id] : 0u, bd });
+        std::sort(r.sb.begin(), r.sb.end()); r.ok = true; return r;
+    }
+}
+
+bool Extract::fp16Compatible(const std::vector<uint8_t>& raw, const std::vector<uint8_t>& translated, std::string& why) {
+    SpvInfo a = scan(raw), b = scan(translated);
+    if (!a.ok) { why = "not valid SPIR-V"; return false; }
+    if (!a.f16) { why = "does not use Float16"; return false; }
+    if (!b.ok) { why = "translated shader not readable"; return false; }
+    if (a.sb != b.sb) { why = "descriptor layout differs (" + std::to_string(a.sb.size()) + " vs " + std::to_string(b.sb.size()) + " bindings)"; return false; }
+    return true;
 }

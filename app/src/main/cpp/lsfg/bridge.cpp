@@ -27,10 +27,21 @@ void setErr(char *err, int n, const std::string &m) {
     if (err && n > 0) { std::snprintf(err, static_cast<size_t>(n), "%s", m.c_str()); }
 }
 
+bool g_fp16 = false;
+int g_fp16_used = 0, g_fp16_skipped = 0;
+
 std::vector<uint8_t> loadShader(const std::string &name) {
     if (name == "mipmaps" || name == "p_mipmaps")
         return std::vector<uint8_t>(mipmaps_replacement_spv, mipmaps_replacement_spv + mipmaps_replacement_spv_len);
-    return Extract::translateShader(Extract::getShader(name));
+    std::vector<uint8_t> t = Extract::translateShader(Extract::getShader(name));
+    if (g_fp16) {   // experimental: the DLL's own 16-bit SPIR-V, only if it exposes the same bindings as the 32-bit shader
+        std::vector<uint8_t> r = Extract::getShaderFp16(name);
+        std::string why = "no 16-bit variant in the DLL";
+        if (!r.empty() && Extract::fp16Compatible(r, t, why)) { g_fp16_used++; return r; }
+        g_fp16_skipped++;
+        if (g_fp16_skipped <= 4) LOG("lsfg: half precision: %s stays 32-bit (%s)", name.c_str(), why.c_str());
+    }
+    return t;
 }
 }
 
@@ -42,6 +53,8 @@ EXPORT int las_lsfg_init(void *gipa, void *instance, void *phys, void *dev, uint
         Extract::setDllPath(dll ? dll : "");
         Extract::extractShaders();
         g_perf = perf != 0;
+        { const char *f = getenv("LAS_LSFG_FP16"); g_fp16 = f && *f == '1'; }
+        LOG("lsfg: DLL has %s", Extract::resourceSummary().c_str());
         auto get = reinterpret_cast<PFN_vkGetInstanceProcAddr>(gipa);
         auto in = reinterpret_cast<VkInstance>(instance);
         auto pd = reinterpret_cast<VkPhysicalDevice>(phys);
@@ -52,6 +65,7 @@ EXPORT int las_lsfg_init(void *gipa, void *instance, void *phys, void *dev, uint
         else
             LSFG_3_1::initializeExternal(get, in, pd, d, qfam, q, hdr != 0, flowScale, static_cast<uint64_t>(generated), loadShader);
         g_ready = true;
+        if (g_fp16) LOG("lsfg: half precision: %d shaders use the DLL's 16-bit variant, %d stay 32-bit", g_fp16_used, g_fp16_skipped);
         return 0;
     } catch (const std::exception &e) {
         setErr(err, errlen, e.what());
