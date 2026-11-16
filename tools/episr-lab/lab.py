@@ -228,7 +228,7 @@ def _cr(r, a=-0.5):
     r = np.abs(r); r2 = r * r
     return np.where(r < 1, (a + 2) * r2 * r - (a + 3) * r2 + 1, np.where(r < 2, a * r2 * r - 5 * a * r2 + 8 * a * r - 4 * a, 0.0))
 
-def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, ls=0.0, lclamp=0.035, loff=1.0, lmode=0, lcas=0.0, lfloor=0.0, steep=0.0, steepk=1.0, steepg=0.0, **k):
+def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, ls=0.0, lclamp=0.035, loff=1.0, lmode=0, lcas=0.0, lfloor=0.0, steep=0.0, steepk=1.0, steepg=0.0, dk=1.0, **k):
     """EpiSR 2: no edge direction. (1) gate: the range of three reads (two gathered texels and the bilinear read) says whether a pixel is on an
     edge; flat pixels keep the one bilinear read. (2) on an edge, a separable Catmull-Rom over the 12 gathered texels (per-axis weights, computed
     once, products per texel). (3) the cubic's difference from the bilinear read is boosted with a soft limit d/(1+|d|/lim), scaled by the gate,
@@ -237,6 +237,7 @@ def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, c
     v = {n: g.G(*o) for n, o in TAPS.items()}
     gb = g.bil[..., 1]
     hi = np.maximum(np.maximum(v['ly'], v['lz']), gb); lo = np.minimum(np.minimum(v['ly'], v['lz']), gb)
+    if dk < 1: edge = edge * (dk + (1 - dk) * np.clip((hi + lo) * 1.0, 0, 1))   # brightness-adaptive gate: dark areas need less contrast to count as edges
     a = np.clip((hi - lo - edge) / (2 * edge), 0, 1)
     px, py = g.plx, g.ply
     wx = {-1: _cr(px + 1, ca), 0: _cr(px, ca), 1: _cr(1 - px, ca), 2: _cr(2 - px, ca)}
