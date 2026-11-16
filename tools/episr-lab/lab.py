@@ -228,7 +228,7 @@ def _cr(r, a=-0.5):
     r = np.abs(r); r2 = r * r
     return np.where(r < 1, (a + 2) * r2 * r - (a + 3) * r2 + 1, np.where(r < 2, a * r2 * r - 5 * a * r2 + 8 * a * r - 4 * a, 0.0))
 
-def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, ls=0.0, lclamp=0.035, loff=1.0, lmode=0, lcas=0.0, lfloor=0.0, steep=0.0, steepk=1.0, steepg=0.0, dk=1.0, **k):
+def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, ls=0.0, lclamp=0.035, loff=1.0, lmode=0, lcas=0.0, lfloor=0.0, steep=0.0, steepk=1.0, steepg=0.0, dk=1.0, aa=0.0, aat=0.5, aas=0.0, **k):
     """EpiSR 2: no edge direction. (1) gate: the range of three reads (two gathered texels and the bilinear read) says whether a pixel is on an
     edge; flat pixels keep the one bilinear read. (2) on an edge, a separable Catmull-Rom over the 12 gathered texels (per-axis weights, computed
     once, products per texel). (3) the cubic's difference from the bilinear read is boosted with a soft limit d/(1+|d|/lim), scaled by the gate,
@@ -249,7 +249,14 @@ def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, c
     det = rec - gb
     mx = np.maximum(np.maximum(v['ly'], v['lz']), np.maximum(v['rx'], v['rw'])); mn = np.minimum(np.minimum(v['ly'], v['lz']), np.minimum(v['rx'], v['rw']))
     L = lim + rlim * (mx - mn)
-    tgt = rec + boost * a * det / (1 + np.abs(det) / L)
+    if aa > 0:                                                   # alias detector: on an aliased edge the four centre texels sit at the two extremes (no in-between values); on an anti-aliased edge some do
+        rg_ = np.maximum(mx - mn, 1e-4); cen = [(v[n] - mn) / rg_ for n in ('ly', 'lz', 'rx', 'rw')]
+        mid = np.minimum.reduce([np.abs(2 * t - 1) for t in cen])                      # 1 = every centre texel is at an extreme
+        bim = np.clip((mid - aat) / (1 - aat), 0, 1) * np.clip((mx - mn) / 0.08, 0, 1)
+        boost_eff = boost * (1 - aa * bim); soften = aas * bim
+    else: boost_eff = boost; soften = 0.0
+    tgt = rec + boost_eff * a * det / (1 + np.abs(det) / L)
+    if aas > 0 and aa > 0: tgt = tgt + soften * (0.5 * (rec + gb) - tgt) * 0   # (placeholder: softening handled below)
     soft = soft + rsoft * (mx - mn)
     if steep > 0:                                                # edge steepening: S-curve of the value inside the local range pushes mid-edge values to the ends
         rg = np.maximum(mx - mn, 1e-4); t_ = np.clip((tgt - mn) / rg, 0, 1)
@@ -368,9 +375,81 @@ def up_epi3(img, ow, oh, smooth=1.0, reach=0.8, cthr=0.5, ethr=0.01, boost=2.0, 
     delta = np.clip(tgt - gb, -0.12, 0.12)
     return np.clip(np.where((a > 0)[..., None], g.bil + delta[..., None], g.bil), 0, 1)
 
+def fxaa(img, subpix=0.75, thr_min=0.0312, thr_max=0.125):
+    """Numpy port of the app's fxaa.frag (FXAA 3.11 as in Rendu, MIT): runs on the game-size image before the upscale."""
+    h, w = img.shape[:2]
+    lum = lambda c: c @ np.array([0.299, 0.587, 0.114], np.float32)
+    L = lum(img); P = np.pad(L, 1, mode='edge')
+    sh = lambda dx, dy: P[1 + dy:1 + dy + h, 1 + dx:1 + dx + w]
+    c, dn, up, lf, rt = sh(0, 0), sh(0, -1), sh(0, 1), sh(-1, 0), sh(1, 0)
+    mn = np.minimum(c, np.minimum(np.minimum(dn, up), np.minimum(lf, rt))); mx = np.maximum(c, np.maximum(np.maximum(dn, up), np.maximum(lf, rt)))
+    rng = mx - mn
+    edge = rng >= np.maximum(thr_min, mx * thr_max)
+    dl, ur, ul, dr = sh(-1, -1), sh(1, 1), sh(-1, 1), sh(1, -1)
+    dnup = dn + up; lfrt = lf + rt; lc = dl + ul; dc = dl + dr; rc = dr + ur; uc = ur + ul
+    eh = np.abs(-2 * lf + lc) + np.abs(-2 * c + dnup) * 2 + np.abs(-2 * rt + rc)
+    ev = np.abs(-2 * up + uc) + np.abs(-2 * c + lfrt) * 2 + np.abs(-2 * dn + dc)
+    horiz = eh >= ev
+    luma1 = np.where(horiz, dn, lf); luma2 = np.where(horiz, up, rt)
+    g1 = luma1 - c; g2 = luma2 - c
+    steep1 = np.abs(g1) >= np.abs(g2)
+    gscaled = 0.25 * np.maximum(np.abs(g1), np.abs(g2))
+    step = np.where(steep1, -1.0, 1.0)
+    lavg = np.where(steep1, 0.5 * (luma1 + c), 0.5 * (luma2 + c))
+    ox, oy = np.meshgrid(np.arange(w) + 0.5, np.arange(h) + 0.5)
+    cx = np.where(horiz, ox, ox + step * 0.5); cy = np.where(horiz, oy + step * 0.5, oy)
+    dxo = np.where(horiz, 1.0, 0.0); dyo = np.where(horiz, 0.0, 1.0)
+    q = lambda i: 1.0 if i < 5 else (1.5 if i == 5 else (2.0 if i < 10 else (4.0 if i < 11 else 8.0)))
+    Ls = lambda x, y: lum(sample_bilinear(img, x, y))
+    p1x, p1y = cx - dxo * q(0), cy - dyo * q(0); p2x, p2y = cx + dxo * q(0), cy + dyo * q(0)
+    e1 = Ls(p1x, p1y) - lavg; e2 = Ls(p2x, p2y) - lavg
+    r1 = np.abs(e1) >= gscaled; r2 = np.abs(e2) >= gscaled
+    p1x = np.where(r1, p1x, p1x - dxo * q(1)); p1y = np.where(r1, p1y, p1y - dyo * q(1))
+    p2x = np.where(r2, p2x, p2x + dxo * q(1)); p2y = np.where(r2, p2y, p2y + dyo * q(1))
+    for i in range(2, 12):
+        if (r1 & r2).all(): break
+        n1 = Ls(p1x, p1y) - lavg; n2 = Ls(p2x, p2y) - lavg
+        e1 = np.where(r1, e1, n1); e2 = np.where(r2, e2, n2)
+        r1 = np.abs(e1) >= gscaled; r2 = np.abs(e2) >= gscaled
+        p1x = np.where(r1, p1x, p1x - dxo * q(i)); p1y = np.where(r1, p1y, p1y - dyo * q(i))
+        p2x = np.where(r2, p2x, p2x + dxo * q(i)); p2y = np.where(r2, p2y, p2y + dyo * q(i))
+    d1 = np.where(horiz, ox - p1x, oy - p1y); d2 = np.where(horiz, p2x - ox, p2y - oy)
+    dir1 = d1 < d2; dfin = np.minimum(d1, d2); thick = d1 + d2
+    csmall = c < lavg
+    cv1 = (e1 < 0) != csmall; cv2 = (e2 < 0) != csmall
+    cv = np.where(dir1, cv1, cv2)
+    po = -dfin / np.maximum(thick, 1e-6) + 0.5
+    fo = np.where(cv, po, 0.0)
+    lavg9 = (1.0 / 12.0) * (2 * (dnup + lfrt) + lc + rc)
+    sp1 = np.clip(np.abs(lavg9 - c) / np.maximum(rng, 1e-6), 0, 1)
+    sp2 = (-2 * sp1 + 3) * sp1 * sp1
+    fo = np.maximum(fo, sp2 * sp2 * subpix)
+    fx = np.where(horiz, ox, ox + fo * step); fy = np.where(horiz, oy + fo * step, oy)
+    out = sample_bilinear(img, fx, fy)
+    return np.where(edge[..., None], out, img)
+
+def with_fxaa(up, **kw):
+    return lambda img, ow, oh, **k: up(fxaa(img, **kw), ow, oh, **k)
+
+def fxaa_gated(img, lo=0.25, hi=0.75, **kw):
+    """FXAA applied only where the 3x3 neighbourhood is bimodal (every luma near the local min or max = a hard, aliased step); edges that already
+    have in-between values (anti-aliased input) are left alone."""
+    out = fxaa(img, **kw)
+    h, w = img.shape[:2]
+    L = img @ np.array([0.299, 0.587, 0.114], np.float32); P = np.pad(L, 1, mode='edge')
+    nb = np.stack([P[1 + dy:1 + dy + h, 1 + dx:1 + dx + w] for dy in (-1, 0, 1) for dx in (-1, 0, 1)])
+    mn, mx = nb.min(0), nb.max(0); rg = np.maximum(mx - mn, 1e-4)
+    t = (nb - mn) / rg
+    inbetween = ((t > lo) & (t < hi)).sum(0)                   # how many of the 9 are mid-values
+    m = (inbetween <= 1) & (rg > 0.06)
+    return np.where(m[..., None], out, img)
+
+def with_gfxaa(up, **kw):
+    return lambda img, ow, oh, **k: up(fxaa_gated(img, **kw), ow, oh, **k)
+
 UPSCALERS = {
     'bilinear': up_bilinear, 'bicubic': up_bicubic, 'lanczos': up_lanczos,
-    'sgsr1': up_sgsr1, 'sgsrq': up_sgsrq, 'episr1': up_episr1, 'episr2': up_episr2, 'mwsr': up_mwsr, 'epi2': up_epi2, 'epi3': up_epi3, 'fsr1': up_fsr1, 'fsr1_easu': lambda i, w, h, **k: up_fsr1(i, w, h, rcas_stops=None),
+    'sgsr1': up_sgsr1, 'sgsrq': up_sgsrq, 'episr1': up_episr1, 'episr2': up_episr2, 'mwsr': up_mwsr, 'epi2': up_epi2, 'fxaa_epi2': with_fxaa(up_epi2), 'gfxaa_epi2': with_gfxaa(up_epi2), 'lfxaa_epi2': with_fxaa(up_epi2, subpix=0.3, thr_min=0.06, thr_max=0.22), 'fxaa_fsr1': with_fxaa(up_fsr1), 'fxaa_bilinear': with_fxaa(up_bilinear), 'epi3': up_epi3, 'fsr1': up_fsr1, 'fsr1_easu': lambda i, w, h, **k: up_fsr1(i, w, h, rcas_stops=None),
 }
 
 # ---------- metrics ----------
