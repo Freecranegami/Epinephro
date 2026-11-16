@@ -689,7 +689,8 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         const char *ev = getenv("LAS_EPISR2");
         if (ev) sscanf(ev, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8], &t[9]);
         for (int q = 0; q < 8; q++) c->vinfo[4 + q] = t[q];                         /* t0, t1: boost, limit, edge, margin | delta limit, compare, texture strength, texture clamp */
-        c->vinfo[12] = 0.5f * t[8] / (float)c->rect.extent.width; c->vinfo[13] = 0.5f * t[8] / (float)c->rect.extent.height; c->vinfo[14] = t[9]; c->vinfo[15] = 0;
+        c->vinfo[12] = 0.5f * t[8] / (float)c->rect.extent.width; c->vinfo[13] = 0.5f * t[8] / (float)c->rect.extent.height; c->vinfo[14] = t[9];
+        c->vinfo[15] = (c->rect.extent.width == c->in.width && c->rect.extent.height == c->in.height) ? 1.0f : 0.0f;      /* native size: the edge boost becomes an unsharp mask */
         LOGI("sgsr: EpiSR 2 boost %.2f limit %.3f edge %.4f margin %.3f delta limit %.3f compare %.0f texture %.2f clamp %.3f offset %.2f floor %.3f", t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9]);
     }
     if (c->mw) {   /* MWSR: the per-scale "law" of mwsr/README.md (kc, kg, kr, kl are quadratics in ln(scale)); ft and kwc are constants */
@@ -700,7 +701,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         float kg = (-0.12884f + 2.58447f * x - 1.26009f * x * x) * force;
         float kr = 1.00715f - 1.02091f * x + 0.56996f * x * x;
         float kl = (0.33417f - 0.29620f * x + 0.08628f * x * x) * force;
-        float fade = fminf(fmaxf((sc - 1.0f) / 0.07f, 0.0f), 1.0f);      /* kg and kwc fade in between 1:1 and x1.07 */
+        float fade = 1.0f;      /* the law's values for x1.07 also hold at 1:1, where the sharpening is all that is left to do */
         c->vinfo[4] = sx; c->vinfo[5] = sy; c->vinfo[6] = kc; c->vinfo[7] = 0.005f;
         c->vinfo[8] = kg * fade; c->vinfo[9] = 0.1f * fade; c->vinfo[10] = kl; c->vinfo[11] = kr;
         LOGI("sgsr: MWSR scale %.3f kc %.3f kg %.3f kr %.3f kl %.3f", sc, kc, kg * fade, kr, kl);

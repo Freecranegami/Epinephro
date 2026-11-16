@@ -14,7 +14,7 @@ layout(push_constant) uniform PC {
     highp vec4 ViewportInfo;   // 1/w, 1/h, w, h of the input
     highp vec4 t0;             // boost, limit (+ half the local range), edge threshold, margin (share of the local range)
     highp vec4 t1;             // delta limit, compare (left half bilinear), texture sharpness, texture clamp
-    highp vec4 t2;             // texture sharpness tap offset in uv (half an output pixel times the offset setting), texture noise floor, 0
+    highp vec4 t2;             // texture sharpness tap offset in uv (half an output pixel times the offset setting), texture noise floor, native (1 = output size equals input size)
 } pc;
 layout(location = 0) in highp vec2 uv;
 layout(location = 0) out vec4 out_Target0;
@@ -36,12 +36,30 @@ void main() {
     highp vec2 imgCoordPixel = floor(imgCoord);
     highp vec2 coord = imgCoordPixel * pc.ViewportInfo.xy;
     vec2 pl = imgCoord - imgCoordPixel;
+    float a = 0.0;
+    if (pc.t2.w > 0.5) {   // native size: nothing to reconstruct, so the edge boost works as an unsharp mask against the four neighbouring texels
+        vec2 tx = pc.ViewportInfo.xy;
+        float gl = textureLod(ps0, uv - vec2(tx.x, 0.0), 0.0).y, gr = textureLod(ps0, uv + vec2(tx.x, 0.0), 0.0).y;
+        float gu = textureLod(ps0, uv - vec2(0.0, tx.y), 0.0).y, gd = textureLod(ps0, uv + vec2(0.0, tx.y), 0.0).y;
+        float hiN = max(max(max(gl, gr), max(gu, gd)), col.y), loN = min(min(min(gl, gr), min(gu, gd)), col.y);
+        float rngN = hiN - loN;
+        float aN = clamp((rngN - pc.t0.z) / (2.0 * pc.t0.z), 0.0, 1.0);
+        if (aN > 0.0) {
+            float detN = col.y - 0.25 * (gl + gr + gu + gd);
+            float tgtN = col.y + 0.5 * pc.t0.x * aN * detN / (1.0 + abs(detN) / (pc.t0.y + 0.5 * rngN));
+            tgtN = clamp(tgtN, loN - pc.t0.w * rngN, hiN + pc.t0.w * rngN);
+            float dN = clamp(tgtN - col.y, -pc.t1.x, pc.t1.x);
+            col = clamp(col + vec3(dN), 0.0, 1.0);
+        }
+        a = aN;
+    } else {
+    {
     vec4 left = textureGather(ps0, coord, 1);
 
     highp float hi = max(max(left.y, left.z), col.y);
     highp float lo = min(min(left.y, left.z), col.y);
     highp float edge = pc.t0.z;
-    float a = clamp((hi - lo - edge) / (2.0 * edge), 0.0, 1.0);
+    a = clamp((hi - lo - edge) / (2.0 * edge), 0.0, 1.0);
     if (a > 0.0) {
         coord.x += pc.ViewportInfo.x;
         vec4 right = textureGather(ps0, coord + vec2(pc.ViewportInfo.x, 0.0), 1);
@@ -72,6 +90,8 @@ void main() {
         tgt = clamp(tgt, mn - pc.t0.w * rng, mx + pc.t0.w * rng);
         float delta = clamp(tgt - col.y, -pc.t1.x, pc.t1.x);
         col = clamp(col + vec3(delta), 0.0, 1.0);
+    }
+    }
     }
     if (pc.t1.z > 0.0) {   // LumaSharpen-style texture sharpening, weaker the more the pixel is an edge
         vec2 o = pc.t2.xy;
