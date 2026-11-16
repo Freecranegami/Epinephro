@@ -228,7 +228,7 @@ def _cr(r, a=-0.5):
     r = np.abs(r); r2 = r * r
     return np.where(r < 1, (a + 2) * r2 * r - (a + 3) * r2 + 1, np.where(r < 2, a * r2 * r - 5 * a * r2 + 8 * a * r - 4 * a, 0.0))
 
-def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, ls=0.0, lclamp=0.035, loff=1.0, lmode=0, **k):
+def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, ca=-0.5, rlim=0.5, rsoft=0.15, ls=0.0, lclamp=0.035, loff=1.0, lmode=0, lcas=0.0, lfloor=0.0, **k):
     """EpiSR 2: no edge direction. (1) gate: the range of three reads (two gathered texels and the bilinear read) says whether a pixel is on an
     edge; flat pixels keep the one bilinear read. (2) on an edge, a separable Catmull-Rom over the 12 gathered texels (per-axis weights, computed
     once, products per texel). (3) the cubic's difference from the bilinear read is boosted with a soft limit d/(1+|d|/lim), scaled by the gate,
@@ -258,6 +258,14 @@ def up_epi2(img, ow, oh, boost=2.0, lim=0.02, edge=0.004, soft=0.0, dlim=0.12, c
         o = 0.5 * loff
         blur = 0.25 * sum(sample_bilinear(img, g.px + dx * o * sx, g.py + dy * o * sy) for dx, dy in ((1, -1), (-1, 1), (-1, -1), (1, 1)))
         sl = ((g.bil - blur) @ np.array([0.2126, 0.7152, 0.0722], np.float32)) * ls
+        if lcas > 0 or lfloor > 0:                               # CAS-style limiter from the same taps: less near black/white and where contrast is already high; noise floor
+            lum = lambda c: c @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+            taps = [sample_bilinear(img, g.px + dx * o * sx, g.py + dy * o * sy) for dx, dy in ((1, -1), (-1, 1), (-1, -1), (1, 1))]
+            ls_ = np.stack([lum(t) for t in taps] + [lum(g.bil)])
+            mn_, mx_ = ls_.min(0), ls_.max(0)
+            amp = np.sqrt(np.clip(np.minimum(mn_, 1 - mx_) / np.maximum(mx_, 1e-4), 0, 1)) if lcas > 0 else 1.0
+            if lfloor > 0: t_ = np.clip((mx_ - mn_) / lfloor, 0, 1); amp = amp * t_ * t_ * (3 - 2 * t_)
+            sl = sl * amp * (1.0 if lcas <= 0 else 1.0 / max(lcas, 1e-3) * 1.0)
         sl = np.clip(sl, -lclamp, lclamp)
         if lmode == 1: sl = sl * (1 - a)
         res = res + sl[..., None]

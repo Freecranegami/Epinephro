@@ -685,12 +685,12 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
 
     c->vinfo[0] = 1.0f / (float)c->in.width; c->vinfo[1] = 1.0f / (float)c->in.height; c->vinfo[2] = (float)c->in.width; c->vinfo[3] = (float)c->in.height;
     if (c->e2) {   /* EpiSR 2: LAS_EPISR2="boost,limit,edge,margin,delta limit,compare" */
-        float t[9] = { 2.0f, 0.02f, 0.004f, 0.15f, 0.12f, 0.0f, 1.0f, 0.02f, 1.5f };
+        float t[10] = { 2.0f, 0.02f, 0.004f, 0.15f, 0.12f, 0.0f, 1.5f, 0.02f, 1.5f, 0.02f };
         const char *ev = getenv("LAS_EPISR2");
-        if (ev) sscanf(ev, "%f,%f,%f,%f,%f,%f,%f,%f,%f", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8]);
+        if (ev) sscanf(ev, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8], &t[9]);
         for (int q = 0; q < 8; q++) c->vinfo[4 + q] = t[q];                         /* t0, t1: boost, limit, edge, margin | delta limit, compare, texture strength, texture clamp */
-        c->vinfo[12] = 0.5f * t[8] / (float)c->rect.extent.width; c->vinfo[13] = 0.5f * t[8] / (float)c->rect.extent.height; c->vinfo[14] = 0; c->vinfo[15] = 0;
-        LOGI("sgsr: EpiSR 2 boost %.2f limit %.3f edge %.4f margin %.3f delta limit %.3f compare %.0f texture %.2f clamp %.3f offset %.2f", t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8]);
+        c->vinfo[12] = 0.5f * t[8] / (float)c->rect.extent.width; c->vinfo[13] = 0.5f * t[8] / (float)c->rect.extent.height; c->vinfo[14] = t[9]; c->vinfo[15] = 0;
+        LOGI("sgsr: EpiSR 2 boost %.2f limit %.3f edge %.4f margin %.3f delta limit %.3f compare %.0f texture %.2f clamp %.3f offset %.2f floor %.3f", t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9]);
     }
     if (c->mw) {   /* MWSR: the per-scale "law" of mwsr/README.md (kc, kg, kr, kl are quadratics in ln(scale)); ft and kwc are constants */
         float sx = (float)c->rect.extent.width / (float)c->in.width, sy = (float)c->rect.extent.height / (float)c->in.height;

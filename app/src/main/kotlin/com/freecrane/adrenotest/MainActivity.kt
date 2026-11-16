@@ -622,7 +622,8 @@ class MainActivity : Activity() {
             P(3, "Edge overshoot margin (share of local contrast, 0 = hard clamp)", 400) { "%.3f".format(it / 1000f) },
             P(5, "Texture sharpness, LumaSharpen style (0 = off, works away from edges)", 400) { "%.2f".format(it / 100f) },
             P(6, "Texture sharpness clamp (largest change per pixel)", 100) { "%.3f".format(it / 1000f) },
-            P(7, "Texture sharpness reach (1.00 = about one output pixel)", 300) { "%.2f".format(it / 100f) })
+            P(7, "Texture sharpness reach (1.00 = about one output pixel)", 300) { "%.2f".format(it / 100f) },
+            P(8, "Texture noise floor (0 = off, higher = leave smooth areas alone)", 100) { "%.3f".format(it / 1000f) })
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0) }
         val bars = ps.map { p ->
             val bar = M3Seek(this, p.max, Tweaks.ep2(this, p.idx).coerceIn(0, p.max)) { }

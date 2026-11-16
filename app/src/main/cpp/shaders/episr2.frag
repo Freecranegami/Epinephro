@@ -14,7 +14,7 @@ layout(push_constant) uniform PC {
     highp vec4 ViewportInfo;   // 1/w, 1/h, w, h of the input
     highp vec4 t0;             // boost, limit (+ half the local range), edge threshold, margin (share of the local range)
     highp vec4 t1;             // delta limit, compare (left half bilinear), texture sharpness, texture clamp
-    highp vec4 t2;             // texture sharpness tap offset in uv (half an output pixel times the offset setting), 0, 0
+    highp vec4 t2;             // texture sharpness tap offset in uv (half an output pixel times the offset setting), texture noise floor, 0
 } pc;
 layout(location = 0) in highp vec2 uv;
 layout(location = 0) out vec4 out_Target0;
@@ -75,10 +75,17 @@ void main() {
     }
     if (pc.t1.z > 0.0) {   // LumaSharpen-style texture sharpening, weaker the more the pixel is an edge
         vec2 o = pc.t2.xy;
-        vec3 bl = textureLod(ps0, uv + vec2(o.x, -o.y), 0.0).xyz + textureLod(ps0, uv + vec2(-o.x, o.y), 0.0).xyz
-                + textureLod(ps0, uv - o, 0.0).xyz + textureLod(ps0, uv + o, 0.0).xyz;
-        float sl = dot(bil - 0.25 * bl, vec3(0.2126, 0.7152, 0.0722)) * pc.t1.z;
-        col = clamp(col + vec3(clamp(sl, -pc.t1.w, pc.t1.w) * (1.0 - a)), 0.0, 1.0);
+        vec3 t0 = textureLod(ps0, uv + vec2(o.x, -o.y), 0.0).xyz, t1 = textureLod(ps0, uv + vec2(-o.x, o.y), 0.0).xyz;
+        vec3 t2 = textureLod(ps0, uv - o, 0.0).xyz, t3 = textureLod(ps0, uv + o, 0.0).xyz;
+        const vec3 LC = vec3(0.2126, 0.7152, 0.0722);
+        float sl = dot(bil - 0.25 * (t0 + t1 + t2 + t3), LC) * pc.t1.z;
+        float k = 1.0;
+        if (pc.t2.z > 0.0) {   // noise floor: no sharpening where the four reads barely differ (sky, water, gradients, compression noise)
+            float l0 = dot(t0, LC), l1 = dot(t1, LC), l2 = dot(t2, LC), l3 = dot(t3, LC), lb = dot(bil, LC);
+            float rg = max(max(max(l0, l1), max(l2, l3)), lb) - min(min(min(l0, l1), min(l2, l3)), lb);
+            k = smoothstep(0.0, pc.t2.z, rg);
+        }
+        col = clamp(col + vec3(clamp(sl, -pc.t1.w, pc.t1.w) * k * (1.0 - a)), 0.0, 1.0);
     }
     out_Target0 = vec4(col, 1.0);
 }
