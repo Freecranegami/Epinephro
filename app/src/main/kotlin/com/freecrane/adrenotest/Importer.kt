@@ -430,6 +430,8 @@ object Importer {
         File(dir, "adapter.txt").writeText(adapter)
         writeNativeInfo(dir, nInfo)
 
+        val unpackErr = try { GuestAssetPacks.unpackAtImport(dir, progress) } catch (t: Throwable) { "Unpacking the game's data failed: $t" }
+
         val sb = StringBuilder()
         sb.append("Imported: $label\n")
         sb.append("Package: $pkg\n")
@@ -467,6 +469,7 @@ object Importer {
             }
         }
         sb.append("Launcher: $adapter\n")
+        if (unpackErr != null) sb.append("WARNING: the game's data is not fully unpacked. $unpackErr Free some space; the first launch will try again.\n")
         val report = sb.toString()
         File(dir, "report.txt").writeText(report)
         return report

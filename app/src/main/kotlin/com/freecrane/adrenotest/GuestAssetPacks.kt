@@ -268,6 +268,78 @@ object GuestAssetPacks {
     // Unpack the split APK(s) of an asset pack into a plain folder (guests/<pkg>/packs/<name>/),
     // so the game can read its data with ordinary file paths. Done lazily once per pack; a marker
     // file skips re-extraction until the game is re-imported (which wipes this folder).
+    private const val MB = 1048576L
+
+    // Copies one split's assets/ files into dir. Each file is written under a ".part" name and renamed when complete, so a full disk or
+    // a killed process never leaves a half-written file that looks finished; a file that is already there with the right size is kept,
+    // which lets an interrupted run carry on where it stopped.
+    private fun extractSplit(f: File, dir: File) {
+        ZipFile(f).use { z ->
+            val en = z.entries()
+            while (en.hasMoreElements()) {
+                val e = en.nextElement()
+                val n = e.name
+                if (!n.startsWith("assets/") || e.isDirectory) continue
+                val out = File(dir, n.removePrefix("assets/"))
+                if (out.isFile && out.length() == e.size) continue
+                out.parentFile.mkdirs()
+                val tmp = File(out.path + ".part")
+                try {
+                    z.getInputStream(e).use { i -> tmp.outputStream().use { o -> i.copyTo(o, 1 shl 16) } }
+                    out.delete()
+                    if (!tmp.renameTo(out)) throw java.io.IOException("can't rename ${tmp.name}")
+                } catch (t: Throwable) {
+                    tmp.delete()
+                    throw t
+                }
+            }
+        }
+    }
+
+    private fun assetBytes(f: File): Long = try {
+        ZipFile(f).use { z -> z.entries().asSequence().filter { it.name.startsWith("assets/") && !it.isDirectory }.sumOf { maxOf(it.size, 0L) } }
+    } catch (t: Throwable) { 0L }
+
+    // Called at the end of an import: unpack the game's data now, one split at a time, replacing each data-only split with its stub as soon as
+    // it is unpacked, so the phone never holds more than the game plus one split's worth of extra data. Returns null when everything is
+    // done, or a message for the person (the launch-time unpacking still runs and picks up where this stopped).
+    @JvmStatic
+    fun unpackAtImport(root: File, progress: (String) -> Unit): String? {
+        val packs = LinkedHashMap<String, MutableList<File>>()
+        for (f in Util.guestSplits(root)) packs.getOrPut(canonicalName(f)) { ArrayList() }.add(f)
+        val total = packs.values.sumOf { it.size }
+        var k = 0
+        for ((n, fs) in packs) {
+            val dir = File(root, "packs/" + n.substringBefore('-'))
+            val marker = File(dir, ".las_extracted")
+            if (marker.exists()) { k += fs.size; continue }
+            for (f in fs) {
+                k++
+                if (File(f.path + ".size").exists()) continue          // unpacked and stubbed already
+                val need = assetBytes(f)
+                if (need == 0L) continue
+                progress("Unpacking the game's data: part $k of $total (${f.name}, ${need / MB} MB)...")
+                val free = root.usableSpace
+                if (free < need + 256 * MB) {
+                    val msg = "Not enough storage to unpack ${f.name}: it needs ${need / MB} MB, only ${free / MB} MB are free."
+                    Log.w(TAG, "asset packs: $msg")
+                    return msg
+                }
+                try { extractSplit(f, dir) }
+                catch (t: Throwable) {
+                    val msg = "Unpacking ${f.name} failed (${t.javaClass.simpleName}: ${t.message}), ${root.usableSpace / MB} MB free."
+                    Log.w(TAG, "asset packs: $msg")
+                    return msg
+                }
+                shrink(f, root)
+            }
+            dir.mkdirs()
+            marker.writeText(System.currentTimeMillis().toString())
+            Log.i(TAG, "asset packs: $n unpacked at import")
+        }
+        return null
+    }
+
     // Unpack every pack up front (before the game boots), so no game thread ever waits on one.
     @JvmStatic
     fun extractAll(root: File) {
@@ -335,19 +407,9 @@ object GuestAssetPacks {
         var ok = true
         for (f in splits) {
             try {
-                ZipFile(f).use { z ->
-                    val en = z.entries()
-                    while (en.hasMoreElements()) {
-                        val e = en.nextElement()
-                        val n = e.name
-                        if (!n.startsWith("assets/") || e.isDirectory) continue
-                        val out = File(dir, n.removePrefix("assets/"))
-                        out.parentFile.mkdirs()
-                        z.getInputStream(e).use { i -> out.outputStream().use { o -> i.copyTo(o, 1 shl 16) } }
-                    }
-                }
+                extractSplit(f, dir)
             } catch (t: Throwable) {
-                Log.w(TAG, "asset packs: extract ${f.name} failed: $t")
+                Log.w(TAG, "asset packs: extract ${f.name} failed: $t (free space ${root.usableSpace / 1048576} MB)")
                 ok = false
             }
         }
