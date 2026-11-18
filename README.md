@@ -118,7 +118,8 @@ flowchart LR
 5. **Direct mode:** when the game's picture is already the size of the screen (no upscaling, no black bars), the first effect reads the game's own image and the last one writes the screen image, which saves a whole full-screen copy.
 6. **Dynamic values:** values such as time and the frame counter go into a small buffer that is updated every frame.
 7. **Colour handling:** effects read and write the picture as it is (gamma encoded), without converting to and from linear colour on the way. Textures loaded from files, such as LUT images, are still read as authors expect.
-8. **Timing:** every 600 frames the log lists the GPU time each effect used, so you can see what is expensive.
+8. **Adreno friendly:** your settings are compiled into each shader as constants (like ReShade's performance mode), so the GPU compiler can drop unused branches and unroll loops; the log says how many settings were baked in per effect (`LAS_EPIFX_BAKE=0` switches it off, and an effect that fails to build this way is retried with live settings). Working textures are plain colour images unless they really need an sRGB view or mip levels, which lets Adreno keep its lossless framebuffer compression.
+9. **Timing:** every 600 frames the log lists the GPU time each effect used, so you can see what is expensive.
 
 **Included effects:** LumaSharpen, AMD CAS, FXAA, SMAA, Fake HDR, Vibrance, Tonemap, Levels, Curves, Lift/Gamma/Gain, Colour Matrix, Technicolor, DPX, Sepia, Monochrome, LUT, Bloom, MagicBloom, Vignette, Cartoon, and the RetroArch CRT shaders (zfast, Easymode, Lottes, Lottes 2, Geom, cgwg, Aperture, Caligari, Hyllian, Pi).
 

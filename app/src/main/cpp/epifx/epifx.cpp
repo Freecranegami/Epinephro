@@ -47,12 +47,12 @@ struct Loaded {
     std::string log;
 };
 
-bool compileEffect(const std::string &root, const std::string &file, uint32_t w, uint32_t h, bool wantCode, Loaded &out) {
+bool compileEffect(const std::string &root, const std::string &file, uint32_t w, uint32_t h, bool wantCode, Loaded &out, bool bake = false) {
     out.file = file;
     reshadefx::preprocessor pp;
     pp.add_macro_definition("__RESHADE__", "60000");
     pp.add_macro_definition("__RESHADE_PERMUTATION__", "0");
-    pp.add_macro_definition("__RESHADE_PERFORMANCE_MODE__", "0");
+    pp.add_macro_definition("__RESHADE_PERFORMANCE_MODE__", bake ? "1" : "0");
     pp.add_macro_definition("__VENDOR__", "20803");
     pp.add_macro_definition("__DEVICE__", "0");
     pp.add_macro_definition("__RENDERER__", "0x20000");
@@ -75,7 +75,7 @@ bool compileEffect(const std::string &root, const std::string &file, uint32_t w,
     bool ok = pp.append_file(root + "/Shaders/" + file);
     out.log += pp.errors();
     if (!ok) return false;
-    std::unique_ptr<reshadefx::codegen> cg(reshadefx::create_codegen_spirv(true, false, false, false, true /* flip y: D3D style texcoords */));
+    std::unique_ptr<reshadefx::codegen> cg(reshadefx::create_codegen_spirv(true, false, bake /* settings become constants the GPU compiler can fold */, false, true /* flip y: D3D style texcoords */));
     reshadefx::parser ps;
     ok = ps.parse(pp.output(), cg.get());
     out.log += ps.errors();
@@ -342,6 +342,7 @@ struct Effect {
     struct Dyn { uint32_t offset; std::string src; double mn, mx; unsigned comps; };
     std::vector<Dyn> dyn;
     std::vector<uint8_t> uboCpu;
+    uint32_t baked = 0;           // settings turned into specialization constants
 };
 
 struct Preset {
@@ -496,10 +497,10 @@ std::vector<uint8_t> loadPixels(const std::string &path, uint32_t w, uint32_t h,
     return out;
 }
 
-bool buildEffect(Fx &x, const std::string &root, const std::string &file, const Preset &pre, Effect &e, std::string &why) {
+bool buildEffect(Fx &x, const std::string &root, const std::string &file, const Preset &pre, Effect &e, std::string &why, bool bake) {
     e.file = file;
     std::string base = file.substr(0, file.size() - 3);
-    if (!compileEffect(root, file, x.w, x.h, true, e.L)) { why = "compile: " + e.L.log.substr(0, 300); return false; }
+    if (!compileEffect(root, file, x.w, x.h, true, e.L, bake)) { why = "compile: " + e.L.log.substr(0, 300); return false; }
     auto &m = e.L.mod;
     if (m.techniques.empty()) { why = "no technique"; return false; }
     for (auto &t : m.techniques) for (auto &p : t.passes) if (!p.cs_entry_point.empty()) { why = "uses compute shaders"; return false; }
@@ -524,6 +525,28 @@ bool buildEffect(Fx &x, const std::string &root, const std::string &file, const 
         putUniform(e, u, vals);
     }
 
+    // settings baked into the shaders: one 32-bit specialization constant per component, valued from the preset (or the effect's default)
+    std::vector<uint32_t> specData; std::vector<VkSpecializationMapEntry> specMap;
+    for (size_t i = 0; i < m.spec_constants.size(); i++) {
+        const auto &sc = m.spec_constants[i];
+        uint32_t bits = sc.initializer_value.as_uint[0];
+        if (pv != pre.values.end()) {
+            auto it = pv->second.find(sc.name);
+            if (it != pv->second.end() && sc.offset < it->second.size()) {
+                double d = it->second[sc.offset];
+                using B = reshadefx::type;
+                if (sc.type.base == B::t_float || sc.type.base == B::t_min16float) { float f = (float)d; memcpy(&bits, &f, 4); }
+                else if (sc.type.base == B::t_int || sc.type.base == B::t_min16int) { int32_t v = (int32_t)d; memcpy(&bits, &v, 4); }
+                else if (sc.type.base == B::t_bool) bits = d != 0 ? 1u : 0u;
+                else bits = (uint32_t)(int64_t)d;
+            }
+        }
+        specData.push_back(bits);
+        specMap.push_back({ (uint32_t)i, (uint32_t)(i * 4), 4 });
+    }
+    VkSpecializationInfo specInfo = {}; specInfo.mapEntryCount = (uint32_t)specMap.size(); specInfo.pMapEntries = specMap.data(); specInfo.dataSize = specData.size() * 4; specInfo.pData = specData.data();
+    e.baked = (uint32_t)specMap.size();
+
     // textures
     for (auto &t : m.textures) {
         Tex tx; tx.t = t;
@@ -535,9 +558,12 @@ bool buildEffect(Fx &x, const std::string &root, const std::string &file, const 
         if (tx.kind != 0) continue;
         VkFormat fm = texFormat(tx.t.format);
         uint32_t lv = std::max<uint32_t>(1, tx.t.levels);
-        VkImageUsageFlags us = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-        if (!makeImage(x, tx.img, fm, std::max<uint32_t>(1, tx.t.width), std::max<uint32_t>(1, tx.t.height), lv, us, true)) { why = "texture " + tx.t.name; return false; }
         std::string src = annStr(tx.t.annotations, "source");
+        // Only textures loaded from a file are ever read through an sRGB view, and only ones with mip levels are blitted: every other texture
+        // stays a plain colour image, which lets Adreno keep its lossless framebuffer compression (UBWC) and so saves memory bandwidth.
+        VkImageUsageFlags us = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        if (!src.empty() || lv > 1) us |= VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        if (!makeImage(x, tx.img, fm, std::max<uint32_t>(1, tx.t.width), std::max<uint32_t>(1, tx.t.height), lv, us, !src.empty())) { why = "texture " + tx.t.name; return false; }
         if (!src.empty()) {
             reshadefx::texture_format tf = tx.t.format == reshadefx::texture_format::unknown ? reshadefx::texture_format::rgba8 : tx.t.format;
             if (tf == reshadefx::texture_format::rgba8 || tf == reshadefx::texture_format::r8 || tf == reshadefx::texture_format::rg8) {
@@ -688,6 +714,7 @@ bool buildEffect(Fx &x, const std::string &root, const std::string &file, const 
             st[0].sType = st[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
             st[0].stage = VK_SHADER_STAGE_VERTEX_BIT; st[0].module = p.vs; st[0].pName = rp.vs_entry_point.c_str();
             st[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT; st[1].module = p.fs; st[1].pName = rp.ps_entry_point.c_str();
+            if (!specMap.empty()) st[0].pSpecializationInfo = st[1].pSpecializationInfo = &specInfo;
             VkPipelineVertexInputStateCreateInfo vi = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
             VkPipelineInputAssemblyStateCreateInfo ia = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO }; ia.topology = p.topo;
             VkViewport vp = { 0, 0, (float)p.vw, (float)p.vh, 0, 1 };
@@ -925,17 +952,24 @@ API void *epifx_create(const char *root, const char *preset, void *gipa, void *i
         }
 
         std::string r = root ? root : "";
+        const char *bk = getenv("LAS_EPIFX_BAKE"); const bool bake = !(bk && *bk == '0');   // default on; LAS_EPIFX_BAKE=0 turns it off
         std::vector<Effect *> used;
         for (auto &name : pre.effects) {
             auto e = std::make_unique<Effect>();
             std::string why;
             auto t0 = std::chrono::steady_clock::now();
-            if (!buildEffect(x, r, name + ".fx", pre, *e, why)) {
+            bool built = buildEffect(x, r, name + ".fx", pre, *e, why, bake);
+            if (!built && bake) {
+                LOGI("epifx: %s did not build with its settings baked in (%s); trying again with live settings", name.c_str(), why.c_str());
+                destroyEffect(x, *e); e = std::make_unique<Effect>(); why.clear();
+                built = buildEffect(x, r, name + ".fx", pre, *e, why, false);
+            }
+            if (!built) {
                 LOGI("epifx: %s skipped: %s", name.c_str(), why.c_str());
                 destroyEffect(x, *e);
                 continue;
             }
-            LOGI("epifx: %s ready (%d passes, %lld ms)", name.c_str(), (int)e->passes.size(),
+            LOGI("epifx: %s ready (%d passes, %u settings baked into the shaders, %lld ms)", name.c_str(), (int)e->passes.size(), e->baked,
                  (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count());
             used.push_back(e.get());
             x.names.push_back(name);
