@@ -104,10 +104,10 @@ object Tweaks {
 
     // Upscaler: the game renders smaller than the screen (the Resolution set here, or the game's own resolution option)
     // and the picture is upscaled to the screen: 0 = off, 1 = Snapdragon Game Super Resolution 1, 2 = AMD FSR 1 (EASU + RCAS), 3 = SGSR Quality (SGSR 1 edge-direction variant).
-    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "EpiSR (Epinephro, experimental, tunable)", "MWSR (MoonlightWeb Super Resolution)", "EpiSR 2 (Epinephro, cubic with edge gate)")
+    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "EpiSR (Epinephro, experimental, tunable)", "MWSR (MoonlightWeb Super Resolution)", "EpiSR 2 (Epinephro, cubic with edge gate)", "EpiSR Lite (Epinephro, five fetches, FSR-like and cheap)")
     fun upscaler(ctx: Context): Int {
         val p = Prefs.get(ctx)
-        return p.getInt("upscaler", if (p.getBoolean("sgsr", false)) 1 else 0).coerceIn(0, 6)
+        return p.getInt("upscaler", if (p.getBoolean("sgsr", false)) 1 else 0).coerceIn(0, 7)
     }
     fun setUpscaler(ctx: Context, i: Int) { Prefs.get(ctx).edit().putInt("upscaler", i).commit() }
 
@@ -131,6 +131,12 @@ object Tweaks {
         "Crisp (as sharp as FSR 1, cleaner)" to intArrayOf(200, 20, 4, 150, 0, 250, 35, 100, 20),
         "Punchy (a bit stronger than FSR 1)" to intArrayOf(300, 20, 4, 150, 0, 250, 35, 100, 20))
     fun setEp2Look(ctx: Context, n: Int) { ep2Looks[n].second.forEachIndexed { i, v -> if (i != 4) setEp2(ctx, i, v) } }
+    // EpiSR Lite: kernel depth x100 (the cubic's a is minus this: 50 = Catmull-Rom, 100 = Lanczos-like), sharpness x100, ring margin x100 (100 = no limit), compare 0/1.
+    // Lab, x1.5, GTA V + RDR: 39.1 dB at sharpness 0, 38.3 dB with sharpness 0.5, against 36.7 dB for FSR 1 + RCAS at the same sharpness; beaten by EpiSR 2 at x2.
+    val liteDefaults = intArrayOf(100, 50, 100, 0)
+    fun lite(ctx: Context, i: Int): Int = Prefs.get(ctx).getInt("lite_$i", liteDefaults[i])
+    fun setLite(ctx: Context, i: Int, v: Int) { Prefs.get(ctx).edit().putInt("lite_$i", v).commit() }
+    fun liteEnv(ctx: Context): String = "${-lite(ctx, 0) / 100f},${lite(ctx, 1) / 100f},${lite(ctx, 2) / 100f},${lite(ctx, 3)}"
     fun ep2(ctx: Context, i: Int): Int = Prefs.get(ctx).getInt("episr2b_$i", ep2Defaults[i])
     fun setEp2(ctx: Context, i: Int, v: Int) { Prefs.get(ctx).edit().putInt("episr2b_$i", v).commit() }
     fun ep2Env(ctx: Context): String = "${ep2(ctx, 0) / 100f},${ep2(ctx, 1) / 1000f},${ep2(ctx, 2) / 1000f},${ep2(ctx, 3) / 1000f},0.12,${ep2(ctx, 4)},${ep2(ctx, 5) / 100f},${ep2(ctx, 6) / 1000f},${ep2(ctx, 7) / 100f},${ep2(ctx, 8) / 1000f}"
@@ -214,11 +220,12 @@ object Tweaks {
             Os.setenv("LAS_DRS", if (drsLock(ctx)) "1" else "0", true)
             Os.setenv("LAS_DEPTHDIAG", if (depthDiag(ctx)) "1" else "0", true)
             val up = upscaler(ctx)
-            Os.setenv("LAS_SGSR", if (up == 1) "1" else if (up == 3) "2" else if (up == 4) "3" else if (up == 5) "4" else if (up == 6) "5" else "0", true)
+            Os.setenv("LAS_SGSR", if (up == 1) "1" else if (up == 3) "2" else if (up == 4) "3" else if (up == 5) "4" else if (up == 6) "5" else if (up == 7) "6" else "0", true)
             Os.setenv("LAS_FSR", if (up == 2) "1" else "0", true)
             Os.setenv("LAS_KEEP", if (stretch(ctx)) "0" else "1", true)
             Os.setenv("LAS_EPISR", epiSrEnv(ctx), true)
             Os.setenv("LAS_EPISR2", ep2Env(ctx), true)
+            Os.setenv("LAS_LITE", liteEnv(ctx), true)
             Os.setenv("LAS_RCAS", rcasStops(rcasPercent(ctx)).toString(), true)
             Os.setenv("LAS_CAS", "0", true)
             if (angle(ctx)) {

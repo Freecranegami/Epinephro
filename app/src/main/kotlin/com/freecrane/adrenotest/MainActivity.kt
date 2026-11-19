@@ -613,6 +613,33 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun chooseLite(out: TextView) {
+        data class P(val idx: Int, val name: String, val max: Int, val fmt: (Int) -> String)
+        val ps = listOf(
+            P(0, "Kernel (0.50 = Catmull-Rom, 1.00 = Lanczos-like, higher = more ringing)", 150) { "%.2f".format(it / 100f) },
+            P(1, "Sharpness (0 = off)", 150) { "%.2f".format(it / 100f) },
+            P(2, "Ring limit (smaller = less overshoot, 1.00 = no limit)", 100) { "%.2f".format(it / 100f) })
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0) }
+        val bars = ps.map { p ->
+            val bar = M3Seek(this, p.max, Tweaks.lite(this, p.idx).coerceIn(0, p.max)) { }
+            val label = TextView(this).apply { setPadding(24, 24, 24, 0) }
+            fun show(v: Int) { label.text = "${p.name}: ${p.fmt(v)}" }
+            show(bar.progress); bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
+            box.addView(label); box.addView(bar); p.idx to bar
+        }
+        val cmp = com.google.android.material.checkbox.MaterialCheckBox(this).apply { text = "Compare: left half of the screen is plain bilinear"; isChecked = Tweaks.lite(this@MainActivity, 3) == 1 }
+        box.addView(cmp)
+        MaterialAlertDialogBuilder(this).setTitle("EpiSR Lite tuning")
+            .setView(android.widget.ScrollView(this).apply { addView(box) })
+            .setPositiveButton("Set") { _, _ ->
+                bars.forEach { (i, b) -> Tweaks.setLite(this, i, b.progress) }
+                Tweaks.setLite(this, 3, if (cmp.isChecked) 1 else 0)
+                out.text = "EpiSR Lite set. Only used when the upscaler is EpiSR Lite. Applies the next time the game starts."
+            }
+            .setNeutralButton("Defaults") { _, _ -> Tweaks.liteDefaults.forEachIndexed { i, v -> Tweaks.setLite(this, i, v) }; out.text = "EpiSR Lite back to defaults." }
+            .setNegativeButton("Cancel", null).show()
+    }
+
     private fun chooseEpiSr2Look(out: TextView) {
         val names = Tweaks.ep2Looks.map { it.first }.toTypedArray()
         MaterialAlertDialogBuilder(this).setTitle("EpiSR 2 look")
@@ -911,6 +938,7 @@ class MainActivity : Activity() {
         val rw = Tweaks.resW(this); val rh = Tweaks.resH(this)
         action(b, "Resolution", if (rw > 0 && rh > 0) "$rw x $rh" else "Native") { chooseResolution(outView) }
         action(b, "Upscaler (SGSR / FSR)", Tweaks.upscalers[Tweaks.upscaler(this)].substringBefore(" (")) { chooseUpscaler(outView) }
+        action(b, "EpiSR Lite tuning", "kernel, sharpness, ring limit, compare split") { chooseLite(outView) }
         action(b, "EpiSR 2 look", "Natural, Crisp (FSR 1 sharpness) or Punchy") { chooseEpiSr2Look(outView) }
         action(b, "EpiSR 2 tuning", "boost, limit, edge, compare split") { chooseEpiSr2(outView) }
         action(b, "EpiSR tuning", "sharpness, softness, compare split") { chooseEpiSr(outView) }
