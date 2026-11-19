@@ -118,6 +118,9 @@ object Tweaks {
 
     // FSR 1's RCAS sharpening, shown as 0..100 % (100 % = sharpest). The filter itself takes "stops" of reduction: 0 stops is
     // the sharpest, 2 stops is very soft; AMD suggests about 0.2 as a default.
+    val paceFps = intArrayOf(0, 24, 30, 40, 45, 48, 60, 72, 90, 120)
+    fun pace(ctx: Context): Int = Prefs.get(ctx).getInt("pace_fps", 0)
+    fun setPace(ctx: Context, v: Int) { Prefs.get(ctx).edit().putInt("pace_fps", v).commit() }
     fun rcasPercent(ctx: Context): Int = Prefs.get(ctx).getInt("rcas_pct", 90).coerceIn(0, 100)
     fun setRcasPercent(ctx: Context, v: Int) { Prefs.get(ctx).edit().putInt("rcas_pct", v.coerceIn(0, 100)).commit() }
     // EGSR tunables: boost x100, limit x1000, edge threshold x1000, margin x1000, compare 0/1
@@ -218,6 +221,7 @@ object Tweaks {
             Os.setenv("LAS_KEEP", if (stretch(ctx)) "0" else "1", true)
             Os.setenv("LAS_EGSR", ep2Env(ctx), true)
             Os.setenv("LAS_RCAS", rcasStops(rcasPercent(ctx)).toString(), true)
+            Os.setenv("LAS_PACE_FPS", pace(ctx).toString(), true)
             Os.setenv("LAS_CAS", "0", true)
             if (angle(ctx)) {
                 Os.setenv("ANGLE_DEFAULT_PLATFORM", "vulkan", true)

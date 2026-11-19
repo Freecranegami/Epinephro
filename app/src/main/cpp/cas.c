@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <time.h>
 #include "cas_spv.h"
 #include "fxaa_spv.h"
 
@@ -537,7 +538,41 @@ long vkshim_cas_create(long device, long pci, long palloc, long psc, cas_f8 real
     return r;
 }
 
+/* Frame pacing: LAS_PACE_FPS = target frames per second (0 = off). Every present is held until the next slot of a fixed timeline
+ * (sleep for most of the wait, spin for the last 0.6 ms), so frames leave evenly spaced. The timeline is absolute, so it does not
+ * drift; if the game falls more than one slot behind, the timeline restarts from now instead of rushing to catch up. */
+static int64_t pace_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (int64_t)t.tv_sec * 1000000000LL + t.tv_nsec; }
+static void pace_frame(void) {
+    static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
+    static int fps = -1; static int64_t next, step, last, logAt, worst, sum; static int cnt, late;
+    if (fps < 0) { const char *e = getenv("LAS_PACE_FPS"); fps = e ? atoi(e) : 0; if (fps < 0 || fps > 240) fps = 0; step = fps > 0 ? 1000000000LL / fps : 0;
+                   if (fps) LOGI("pace: frame limiter on, %d fps (%.2f ms per frame)", fps, step / 1e6); }
+    if (!fps) return;
+    pthread_mutex_lock(&mu);
+    int64_t now = pace_now();
+    if (!next) { next = now; logAt = now; }
+    if (now > next + step) { next = now; late++; }               /* the game missed a slot: restart the timeline */
+    int64_t target = next;
+    next += step;
+    pthread_mutex_unlock(&mu);
+    if (target > now) {
+        int64_t coarse = target - 600000;
+        if (coarse > now) { struct timespec ts = { coarse / 1000000000LL, coarse % 1000000000LL }; clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL); }
+        while (pace_now() < target) { }
+    }
+    now = pace_now();
+    pthread_mutex_lock(&mu);
+    if (last) { int64_t d = now - last; sum += d; cnt++; if (d > worst) worst = d; }
+    last = now;
+    if (now - logAt >= 5000000000LL && cnt) {
+        LOGI("pace: %d frames in %.1f s, average %.2f ms, worst %.2f ms, %d missed slots (target %.2f ms)", cnt, (now - logAt) / 1e9, sum / 1e6 / cnt, worst / 1e6, late, step / 1e6);
+        logAt = now; sum = 0; cnt = 0; worst = 0; late = 0;
+    }
+    pthread_mutex_unlock(&mu);
+}
+
 long vkshim_cas_present(long queue, long ppi, cas_f2 real) {
+    pace_frame();
     { long sr; if (vkshim_sgsr_present(queue, ppi, real, &sr)) return sr; }
     const VkPresentInfoKHR *pi = (const VkPresentInfoKHR *)ppi;
     if (pi && pi->swapchainCount == 1 && pi->waitSemaphoreCount <= 8 && cas_fn_init()) {
