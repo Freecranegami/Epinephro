@@ -613,6 +613,15 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun chooseEpiSr2Look(out: TextView) {
+        val names = Tweaks.ep2Looks.map { it.first }.toTypedArray()
+        MaterialAlertDialogBuilder(this).setTitle("EpiSR 2 look")
+            .setItems(names) { _, which ->
+                Tweaks.setEp2Look(this, which)
+                out.text = "EpiSR 2 look: ${names[which]}. It sets the EpiSR 2 tuning values (open EpiSR 2 tuning to fine tune). Applies the next time the game starts."
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     private fun chooseEpiSr2(out: TextView) {
         data class P(val idx: Int, val name: String, val max: Int, val fmt: (Int) -> String)
         val ps = listOf(
@@ -902,6 +911,7 @@ class MainActivity : Activity() {
         val rw = Tweaks.resW(this); val rh = Tweaks.resH(this)
         action(b, "Resolution", if (rw > 0 && rh > 0) "$rw x $rh" else "Native") { chooseResolution(outView) }
         action(b, "Upscaler (SGSR / FSR)", Tweaks.upscalers[Tweaks.upscaler(this)].substringBefore(" (")) { chooseUpscaler(outView) }
+        action(b, "EpiSR 2 look", "Natural, Crisp (FSR 1 sharpness) or Punchy") { chooseEpiSr2Look(outView) }
         action(b, "EpiSR 2 tuning", "boost, limit, edge, compare split") { chooseEpiSr2(outView) }
         action(b, "EpiSR tuning", "sharpness, softness, compare split") { chooseEpiSr(outView) }
         action(b, "RCAS sharpness (FSR 1)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }

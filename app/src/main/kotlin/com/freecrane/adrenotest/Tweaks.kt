@@ -123,6 +123,14 @@ object Tweaks {
         "${epiSr(ctx, 0) / 100f},${epiSr(ctx, 1) / 100f},${23f / 255f},${epiSr(ctx, 2) / 100f},${epiSr(ctx, 4) / 255f},${epiSr(ctx, 3) / 1000f},${epiSr(ctx, 5)}"
     // EpiSR 2 tunables: boost x100, limit x1000, edge threshold x1000, margin x1000, compare 0/1
     val ep2Defaults = intArrayOf(200, 20, 4, 150, 0, 150, 20, 150, 20)   // 5..7: texture sharpness x100, texture clamp x1000, tap offset x100, 8: texture noise floor x1000
+    // Looks for EpiSR 2 (all nine settings; the compare switch, index 4, is left alone). Measured in the lab on GTA V and RDR frames, x1.5 upscale:
+    // Crisp matches FSR 1 + RCAS in sharpness (1.07) with less ringing (0.12 against 0.17) and about 0.7 dB closer to the original; Punchy is a little
+    // stronger than FSR 1 (sharpness 1.11, ringing 0.18).
+    val ep2Looks = listOf(
+        "Natural (default)" to ep2Defaults,
+        "Crisp (as sharp as FSR 1, cleaner)" to intArrayOf(200, 20, 4, 150, 0, 250, 35, 100, 20),
+        "Punchy (a bit stronger than FSR 1)" to intArrayOf(300, 20, 4, 150, 0, 250, 35, 100, 20))
+    fun setEp2Look(ctx: Context, n: Int) { ep2Looks[n].second.forEachIndexed { i, v -> if (i != 4) setEp2(ctx, i, v) } }
     fun ep2(ctx: Context, i: Int): Int = Prefs.get(ctx).getInt("episr2b_$i", ep2Defaults[i])
     fun setEp2(ctx: Context, i: Int, v: Int) { Prefs.get(ctx).edit().putInt("episr2b_$i", v).commit() }
     fun ep2Env(ctx: Context): String = "${ep2(ctx, 0) / 100f},${ep2(ctx, 1) / 1000f},${ep2(ctx, 2) / 1000f},${ep2(ctx, 3) / 1000f},0.12,${ep2(ctx, 4)},${ep2(ctx, 5) / 100f},${ep2(ctx, 6) / 1000f},${ep2(ctx, 7) / 100f},${ep2(ctx, 8) / 1000f}"
