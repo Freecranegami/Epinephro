@@ -80,7 +80,7 @@ DIAGV8 = {n: "vkshim_dd_draw()" for n in ("vkCmdDraw", "vkCmdDrawIndexed", "vkCm
 HOOKV = set(DIAGV) | set(DIAGV8)
 # hooks that only the depth diagnostic needs: handed out as the driver's own function unless LAS_DEPTHDIAG is on
 DD_ONLY = set(DIAGV8) | {"vkCmdEndRenderPass", "vkCmdEndRenderPass2", "vkCmdEndRenderPass2KHR", "vkCmdEndRendering", "vkCmdEndRenderingKHR"}
-DIAGP = {"vkCreateInstance": "vkshim_lsfg_instance(a2, r)",
+DIAGP = {"vkCreateInstance": "vkshim_lsfg_instance(a2, r); vkshim_vrs_instance(a2, r)",
          "vkCreateImage": "vkshim_dd_image(a1, a3, r)", "vkCreateImageView": "vkshim_dd_view(a1, a3, r)",
          "vkCreateRenderPass": "vkshim_dd_rp(a1, a3, r, 1)", "vkCreateRenderPass2": "vkshim_dd_rp(a1, a3, r, 2)",
          "vkCreateRenderPass2KHR": "vkshim_dd_rp(a1, a3, r, 2)", "vkCreateFramebuffer": "vkshim_dd_fb(a1, a3, r)",
@@ -237,6 +237,7 @@ lines.append("extern void vkshim_lsfg_instance(long, long); extern void vkshim_l
 lines.append("extern void vkshim_pc_device(long, long); extern long vkshim_pc_pipelines(long, long); extern void vkshim_pc_after(long, long);")
 lines.append("extern long vkshim_pc_create_info(long, long); extern void vkshim_pc_created(long, long, long); extern void vkshim_pc_destroy(long, long);")
 lines.append("extern void vkshim_perf_present(void);")
+lines.append("extern void vkshim_vrs_instance(long, long); extern void vkshim_vrs_predevice(long, long); extern long vkshim_vrs_pre(long, long, long); extern void vkshim_vrs_post(void);")
 lines.append("extern int vkshim_sgsr_enabled(void);")
 lines.append("extern int vkshim_dd_on(void); extern void vkshim_dd_present(void); extern void vkshim_dd_draw(void); extern void vkshim_dd_end(void);")
 lines.append("extern void vkshim_dd_image(long, long, long); extern void vkshim_dd_view(long, long, long); extern void vkshim_dd_rp(long, long, long, long);")
@@ -289,6 +290,7 @@ for i, n in enumerate(names):
         elif n == "vkCreateDevice":
             lines.append("%s long %s(long a0, long a1, long a2, long a3, long a4, long a5, long a6, long a7) {" % (e, n))
             lines.append("    vkshim_lsfg_predevice(a0, a1);")
+            lines.append("    vkshim_vrs_predevice(a0, a1);")
             lines.append("    long r = ((vkshim_f8)vkshim_table[%d])(a0, a1, a2, a3, a4, a5, a6, a7);" % i)
             lines.append("    if (r == 0 && a3) vkshim_cas_device(a0, *(long *)a3);")
             lines.append("    if (r == 0 && a3) vkshim_pc_device(a0, *(long *)a3);")
@@ -298,7 +300,11 @@ for i, n in enumerate(names):
     elif n in ("vkCreateGraphicsPipelines", "vkCreateComputePipelines"):
         lines.append("__attribute__((visibility(\"default\"))) long %s(long a0, long a1, long a2, long a3, long a4, long a5, long a6, long a7) {" % n)
         lines.append("    a1 = vkshim_pc_pipelines(a0, a1);")
+        if n == "vkCreateGraphicsPipelines":
+            lines.append("    a3 = vkshim_vrs_pre(a0, a2, a3);")
         lines.append("    long r = ((vkshim_f8)vkshim_table[%d])(a0, a1, a2, a3, a4, a5, a6, a7);" % i)
+        if n == "vkCreateGraphicsPipelines":
+            lines.append("    vkshim_vrs_post();")
         lines.append("    vkshim_pc_after(a0, r);")
         lines.append("    vkshim_after(%d, (int)r, 0);" % i)
         lines.append("    return r;")

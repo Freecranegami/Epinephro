@@ -878,6 +878,7 @@ class MainActivity : Activity() {
         action(b, "Upscaler (SGSR / FSR)", Tweaks.upscalers[Tweaks.upscaler(this)].substringBefore(" (")) { chooseUpscaler(outView) }
         action(b, "EGSR look", "Natural, Crisp (FSR 1 sharpness) or Punchy") { chooseEpiSr2Look(outView) }
         action(b, "EGSR tuning", "boost, limit, edge, compare split") { chooseEpiSr2(outView) }
+        action(b, "Variable-rate shading (experimental)", Tweaks.vrsModes[Tweaks.vrs(this)]) { chooseVrs() }
         action(b, "Frame pacing", if (Tweaks.pace(this) == 0) "Off" else "${Tweaks.pace(this)} fps, evenly spaced") { choosePace() }
         action(b, "RCAS sharpness (FSR 1, FSR-1P)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
         toggle(b, "Ignore notch", "Draws the game under the camera cut-out, so it uses the whole screen. Parts of the game's picture at the edge can be hidden by the notch.",
@@ -1015,6 +1016,14 @@ class MainActivity : Activity() {
         action(b, "Stick update rate", if (Pad.stickHz(this) == 0) "Every touch sample" else "${Pad.stickHz(this)} updates per second at most") { chooseStickRate() }
         toggle(b, "Vibrate on press", "A tiny tick when a button is pressed", { Pad.haptics(this) }) { Pad.setHaptics(this, !Pad.haptics(this)); refreshPage() }
         action(b, "Reset layout", "Back to the standard Xbox layout") { Pad.resetLayout(this); outView.text = "Layout reset."; refreshPage() }
+    }
+
+    private fun chooseVrs() {
+        MaterialAlertDialogBuilder(this).setTitle("Variable-rate shading")
+            .setSingleChoiceItems(Tweaks.vrsModes.toTypedArray(), Tweaks.vrs(this)) { d, which ->
+                Tweaks.setVrs(this, which); d.dismiss(); refreshPage()
+                outView.text = "Variable-rate shading: ${Tweaks.vrsModes[which]}. Smoke, glows, fog sheets and other see-through effects are shaded at a coarser rate to save GPU work. It only works when the GPU driver supports it (the Guest log says `vrs: on` or why not). If effects look blocky, set it to Light or Off. Applies the next time the game starts."
+            }.setNegativeButton("Cancel", null).show()
     }
 
     private fun choosePace() {
