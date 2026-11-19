@@ -1,5 +1,5 @@
 #version 450
-// EpiSR 2 = Epinephro's own spatial upscaler. Original work, no code from SGSR/FSR (it only reuses SGSR's texel-gather layout so the vertex
+// EGSR (Epinephro Game Super Resolution) = Epinephro's own spatial upscaler. Original work, no code from SGSR/FSR (it only reuses SGSR's texel-gather layout so the vertex
 // shader and push-constant block are shared). Reference implementation and tuning: episr-lab/lab.py (up_epi2).
 //   1. Gate: the range of three reads (two gathered green texels and the hardware bilinear read) tells if the pixel is on an edge.
 //      A flat pixel keeps the one bilinear read and stops there (one gather, one bilinear).

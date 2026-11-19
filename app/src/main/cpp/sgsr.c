@@ -22,10 +22,8 @@
 #include <stdint.h>
 #include "sgsr_spv.h"
 #include "sgsrq_spv.h"
-#include "episr_spv.h"
 #include "mwsr_spv.h"
-#include "lite_spv.h"
-#include "episr2_spv.h"
+#include "egsr_spv.h"
 #include "fxaa_spv.h"
 #include "fsr_spv.h"
 #include "scale_spv.h"
@@ -248,7 +246,7 @@ typedef struct {
     VkRect2D rect;                       /* where the picture goes on the screen (smaller than the screen when the ratio is kept) */
     int mode, norcas; float rcas; VkImage uimg[MAXI]; VkDeviceMemory umem[MAXI]; VkImageView uview[MAXI]; VkFramebuffer ufb[MAXI];
     VkDescriptorSet dsu[MAXI]; VkPipeline pipee; VkShaderModule efs;
-    float vinfo[16]; int esr, mw, e2, lt; uint32_t easu[16], rcasc[4];      /* push constants, same for every pass of the chain */
+    float vinfo[16]; int mw, e2; uint32_t easu[16], rcasc[4];      /* push constants, same for every pass of the chain */
     /* frame generation (LSFG): the proxy image is copied into fimg[], the generated frame lands in oimg and is run through
      * the same chain as a real frame, as "slot n" (cmdg[j] draws it into swapchain image j) */
     int lg, lgbad, ctx; VkQueue lgq; unsigned long fidx;
@@ -273,7 +271,7 @@ int vkshim_sgsr_enabled(void) {
     static int s = -1;
     if (s < 0) {
         const char *e = getenv("LAS_SGSR"), *f = getenv("LAS_FSR"), *k = getenv("LAS_KEEP"), *w = getenv("LAS_RES_W");
-        s = ((e && *e >= '1' && *e <= '6') ||   /* every upscaler (SGSR, SGSR Quality, EpiSR, MWSR, EpiSR 2, Lite), at native resolution too */
+        s = ((e && *e >= '1' && *e <= '5') ||   /* every upscaler (SGSR, SGSR Quality, MWSR, EGSR), at native resolution too */
               (f && *f == '1') || (k && *k == '1' && w && atoi(w) > 0)) ? 1 : 0;
     }
     return s || vkshim_lsfg_wanted() || epi_wanted();
@@ -283,7 +281,7 @@ int vkshim_sgsr_enabled(void) {
 static int sgsr_mode(void) {
     const char *f = getenv("LAS_FSR"), *e = getenv("LAS_SGSR");
     if (f && *f == '1') return 2;
-    if (e && (*e >= '1' && *e <= '6')) return 1;                /* LAS_SGSR=2 is the same pass with the edge-direction shader (SGSR Quality) */
+    if (e && (*e >= '1' && *e <= '5')) return 1;                /* LAS_SGSR=2 is the same pass with the edge-direction shader (SGSR Quality) */
     return 3;
 }
 
@@ -422,7 +420,7 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
                             (c->mode == 2 && !c->norcas) ? &c->dsu[slot] : (c->fx ? &c->dsq[slot] : &c->ds[slot]), 0, NULL);
     if (c->mode == 2 && c->norcas) F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 64, c->easu);   /* EASU straight into the final image */
     else if (c->mode == 2) F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, c->rcasc);   /* RCAS: sharpen at full size */
-    else F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, c->e2 ? 64 : (c->esr || c->mw) ? 48 : c->lt ? 32 : 16, c->vinfo);
+    else F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, c->e2 ? 64 : c->mw ? 48 : 16, c->vinfo);
     F.CmdDraw(cb2, 3, 1, 0, 0);
     F.CmdEndRenderPass(cb2);
     if (c->epi && !c->pre) EP.record(c->epi, cb2, (uint64_t)c->fb[fbi], slot);
@@ -663,8 +661,8 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
     } else {
         smi.codeSize = sizeof sgsr_vs_spv; smi.pCode = sgsr_vs_spv;
         ST("create vertex shader", F.CreateShaderModule(d, &smi, NULL, &c->vs));
-        { const char *sq = getenv("LAS_SGSR"); int q = sq && *sq == '2'; c->esr = sq && *sq == '3'; c->mw = sq && *sq == '4'; c->e2 = sq && *sq == '5'; c->lt = sq && *sq == '6';        /* SGSR Quality: the edge-direction shader, same inputs */
-          smi.codeSize = c->lt ? sizeof lite_fs_spv : c->e2 ? sizeof episr2_fs_spv : c->mw ? sizeof mwsr_fs_spv : c->esr ? sizeof episr_fs_spv : q ? sizeof sgsrq_fs_spv : sizeof sgsr_fs_spv; smi.pCode = c->lt ? lite_fs_spv : c->e2 ? episr2_fs_spv : c->mw ? mwsr_fs_spv : c->esr ? episr_fs_spv : q ? sgsrq_fs_spv : sgsr_fs_spv;
+        { const char *sq = getenv("LAS_SGSR"); int q = sq && *sq == '2'; c->mw = sq && *sq == '4'; c->e2 = sq && *sq == '5';        /* SGSR Quality: the edge-direction shader, same inputs */
+          smi.codeSize = c->e2 ? sizeof egsr_fs_spv : c->mw ? sizeof mwsr_fs_spv : q ? sizeof sgsrq_fs_spv : sizeof sgsr_fs_spv; smi.pCode = c->e2 ? egsr_fs_spv : c->mw ? mwsr_fs_spv : q ? sgsrq_fs_spv : sgsr_fs_spv;
           LOGI("sgsr: SGSR 1 %s shader", q ? "Quality (edge direction)" : "standard"); }
         ST("create fragment shader", F.CreateShaderModule(d, &smi, NULL, &c->fs));
         ST("create pipeline", mk_pipe(c, c->vs, c->fs, c->rp, c->rect, &c->pipe));
@@ -686,21 +684,14 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
     for (uint32_t i = 0; i < n; i++) ST("create semaphore", F.CreateSemaphore(d, &semi, NULL, &c->sem[i]));
 
     c->vinfo[0] = 1.0f / (float)c->in.width; c->vinfo[1] = 1.0f / (float)c->in.height; c->vinfo[2] = (float)c->in.width; c->vinfo[3] = (float)c->in.height;
-    if (c->lt) {   /* EpiSR Lite: LAS_LITE="kernel a,sharpness,ring margin,compare" */
-        float t[4] = { -1.0f, 0.5f, 1.0f, 0.0f };
-        const char *ev = getenv("LAS_LITE");
-        if (ev) sscanf(ev, "%f,%f,%f,%f", &t[0], &t[1], &t[2], &t[3]);
-        for (int q = 0; q < 4; q++) c->vinfo[4 + q] = t[q];
-        LOGI("sgsr: EpiSR Lite kernel %.2f sharpness %.2f ring margin %.2f compare %.0f", t[0], t[1], t[2], t[3]);
-    }
-    if (c->e2) {   /* EpiSR 2: LAS_EPISR2="boost,limit,edge,margin,delta limit,compare" */
+    if (c->e2) {   /* EGSR: LAS_EGSR="boost,limit,edge,margin,delta limit,compare" */
         float t[10] = { 2.0f, 0.02f, 0.004f, 0.15f, 0.12f, 0.0f, 1.5f, 0.02f, 1.5f, 0.02f };
-        const char *ev = getenv("LAS_EPISR2");
+        const char *ev = getenv("LAS_EGSR");
         if (ev) sscanf(ev, "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8], &t[9]);
         for (int q = 0; q < 8; q++) c->vinfo[4 + q] = t[q];                         /* t0, t1: boost, limit, edge, margin | delta limit, compare, texture strength, texture clamp */
         c->vinfo[12] = 0.5f * t[8] / (float)c->rect.extent.width; c->vinfo[13] = 0.5f * t[8] / (float)c->rect.extent.height; c->vinfo[14] = t[9];
         c->vinfo[15] = (c->rect.extent.width == c->in.width && c->rect.extent.height == c->in.height) ? 1.0f : 0.0f;      /* native size: the edge boost becomes an unsharp mask */
-        LOGI("sgsr: EpiSR 2 boost %.2f limit %.3f edge %.4f margin %.3f delta limit %.3f compare %.0f texture %.2f clamp %.3f offset %.2f floor %.3f", t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9]);
+        LOGI("sgsr: EGSR boost %.2f limit %.3f edge %.4f margin %.3f delta limit %.3f compare %.0f texture %.2f clamp %.3f offset %.2f floor %.3f", t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9]);
     }
     if (c->mw) {   /* MWSR: the per-scale "law" of mwsr/README.md (kc, kg, kr, kl are quadratics in ln(scale)); ft and kwc are constants */
         float sx = (float)c->rect.extent.width / (float)c->in.width, sy = (float)c->rect.extent.height / (float)c->in.height;
@@ -714,13 +705,6 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         c->vinfo[4] = sx; c->vinfo[5] = sy; c->vinfo[6] = kc; c->vinfo[7] = 0.005f;
         c->vinfo[8] = kg * fade; c->vinfo[9] = 0.1f * fade; c->vinfo[10] = kl; c->vinfo[11] = kr;
         LOGI("sgsr: MWSR scale %.3f kc %.3f kg %.3f kr %.3f kl %.3f", sc, kc, kg * fade, kr, kl);
-    }
-    if (c->esr) {   /* EpiSR tunables: LAS_EPISR="sharp,overshoot,limit,soft,edge,noise,compare" (all floats) */
-        float t[7] = { 2.0f, 0.0f, 23.0f / 255.0f, 0.0f, 8.0f / 255.0f, 0.0f, 0.0f };
-        const char *ev = getenv("LAS_EPISR");
-        if (ev) sscanf(ev, "%f,%f,%f,%f,%f,%f,%f", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6]);
-        c->vinfo[4] = t[0]; c->vinfo[5] = t[1]; c->vinfo[6] = t[2]; c->vinfo[7] = t[3]; c->vinfo[8] = t[4]; c->vinfo[9] = t[5]; c->vinfo[10] = t[6]; c->vinfo[11] = 0;
-        LOGI("sgsr: EpiSR sharp %.2f overshoot %.2f limit %.3f soft %.2f edge %.3f noise %.3f compare %.0f", t[0], t[1], t[2], t[3], t[4], t[5], t[6]);
     }
     /* FSR 1 constants, the same as FsrEasuCon / FsrRcasCon in ffx_fsr1.h (input size = viewport size here) */
     {
