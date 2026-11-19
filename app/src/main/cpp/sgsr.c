@@ -273,7 +273,8 @@ int vkshim_sgsr_enabled(void) {
     static int s = -1;
     if (s < 0) {
         const char *e = getenv("LAS_SGSR"), *f = getenv("LAS_FSR"), *k = getenv("LAS_KEEP"), *w = getenv("LAS_RES_W");
-        s = ((e && (*e == '1' || *e == '2')) || (f && *f == '1') || (k && *k == '1' && w && atoi(w) > 0)) ? 1 : 0;
+        s = ((e && *e >= '1' && *e <= '6') ||   /* every upscaler (SGSR, SGSR Quality, EpiSR, MWSR, EpiSR 2, Lite), at native resolution too */
+              (f && *f == '1') || (k && *k == '1' && w && atoi(w) > 0)) ? 1 : 0;
     }
     return s || vkshim_lsfg_wanted() || epi_wanted();
 }
