@@ -165,6 +165,17 @@ class PadOut(private val act: Activity) {
         "lb" to KeyEvent.KEYCODE_BUTTON_L1, "rb" to KeyEvent.KEYCODE_BUTTON_R1, "l3" to KeyEvent.KEYCODE_BUTTON_THUMBL, "r3" to KeyEvent.KEYCODE_BUTTON_THUMBR,
         "start" to KeyEvent.KEYCODE_BUTTON_START, "back" to KeyEvent.KEYCODE_BUTTON_SELECT, "guide" to KeyEvent.KEYCODE_BUTTON_MODE)
 
+    // Stick updates are paced: at most stickHz a second, the newest values only, and a release or a button/trigger/hat change goes out at once.
+    // A touch screen reports faster than most games read, so unpaced updates pile up in the game's input queue and the stick answers late.
+    private val minGap = Pad.stickHz(HostApp.instance).let { if (it <= 0) 0L else 1000L / it }
+    private val main = Handler(android.os.Looper.getMainLooper())
+    private var pending: FloatArray? = null
+    private var lastSent = 0L
+    private val flush = Runnable {
+        val v = pending ?: return@Runnable
+        pending = null; lastSent = SystemClock.uptimeMillis(); motion(lastSent, v)
+    }
+
     fun update(pressed: Set<String>, lx: Float, ly: Float, rx: Float, ry: Float, hx: Float, hy: Float) {
         val now = SystemClock.uptimeMillis()
         // ensure() walks the system's input classes by reflection: once a second is plenty, doing it for every touch sample was costly
@@ -178,8 +189,18 @@ class PadOut(private val act: Activity) {
         var changed = false
         for (i in v.indices) if (abs(v[i] - last[i]) > 0.01f || (v[i] == 0f && last[i] != 0f)) changed = true
         if (!changed) return
+        val before = last
         last = v
-        motion(now, v)
+        // only the sticks are paced; anything else (triggers, hat) or a stick going back to centre is sent now
+        var urgent = false
+        for (i in 4..7) if (v[i] != before[i]) urgent = true
+        if ((v[0] == 0f && v[1] == 0f && (before[0] != 0f || before[1] != 0f)) || (v[2] == 0f && v[3] == 0f && (before[2] != 0f || before[3] != 0f))) urgent = true
+        if (urgent || minGap == 0L || now - lastSent >= minGap) {
+            main.removeCallbacks(flush); pending = null; lastSent = now; motion(now, v)
+        } else {
+            pending = v
+            main.removeCallbacks(flush); main.postDelayed(flush, minGap - (now - lastSent))
+        }
     }
 
     private fun abs(f: Float) = if (f < 0) -f else f

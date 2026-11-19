@@ -1037,8 +1037,18 @@ class MainActivity : Activity() {
             startActivity(Intent(this, PadEditorActivity::class.java).putExtra("pkg", Prefs.scope))
         }
         action(b, "Transparency", "${Pad.opacity(this)} % visible") { choosePadOpacity() }
+        action(b, "Stick update rate", if (Pad.stickHz(this) == 0) "Every touch sample" else "${Pad.stickHz(this)} updates per second at most") { chooseStickRate() }
         toggle(b, "Vibrate on press", "A tiny tick when a button is pressed", { Pad.haptics(this) }) { Pad.setHaptics(this, !Pad.haptics(this)); refreshPage() }
         action(b, "Reset layout", "Back to the standard Xbox layout") { Pad.resetLayout(this); outView.text = "Layout reset."; refreshPage() }
+    }
+
+    private fun chooseStickRate() {
+        val names = Pad.stickRates.map { if (it == 0) "Every touch sample (most events)" else "$it per second" }.toTypedArray()
+        MaterialAlertDialogBuilder(this).setTitle("Stick update rate")
+            .setSingleChoiceItems(names, Pad.stickRates.indexOf(Pad.stickHz(this)).coerceAtLeast(0)) { d, which ->
+                Pad.setStickHz(this, Pad.stickRates[which]); d.dismiss(); refreshPage()
+                outView.text = "Stick updates: ${names[which]}. Lower it if the stick feels late in a game with a low frame rate. Applies the next time the game starts."
+            }.setNegativeButton("Cancel", null).show()
     }
 
     private fun choosePadOpacity() {

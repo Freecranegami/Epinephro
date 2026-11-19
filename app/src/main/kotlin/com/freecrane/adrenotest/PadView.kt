@@ -93,8 +93,9 @@ class PadView(ctx: Context, private val edit: Boolean, private val out: PadOut?)
                     val kx = x + (sx[e.id] ?: 0f) * r * 0.55f; val ky = y + (sy[e.id] ?: 0f) * r * 0.55f
                     fill.color = 0xFF16233A.toInt(); fill.alpha = (255 * al * 0.95f).toInt()
                     c.drawCircle(kx, ky, r * 0.42f, fill)
+                    // the white ring stays where the stick sits; only the knob inside it moves
                     line.color = 0xFFFFFFFF.toInt(); line.alpha = (255 * al).toInt(); line.strokeWidth = unit() * 0.004f + 1.5f
-                    c.drawCircle(kx, ky, r * 0.54f, line)
+                    c.drawCircle(x, y, r * 0.54f, line)
                     line.color = GLOW; line.alpha = (255 * al * 0.5f).toInt(); line.strokeWidth = unit() * 0.003f + 1f
                     c.drawCircle(kx, ky, r * 0.42f, line)
                 }
@@ -285,6 +286,7 @@ class PadView(ctx: Context, private val edit: Boolean, private val out: PadOut?)
         var took = false
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                requestUnbufferedDispatch(ev)          // touch samples arrive as they are read, not batched up to the next screen refresh
                 val i = ev.actionIndex
                 val e = hitTop(ev.getX(i), ev.getY(i))
                 if (e != null) {

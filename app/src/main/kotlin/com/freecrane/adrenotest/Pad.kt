@@ -15,6 +15,11 @@ object Pad {
     fun setOn(c: Context, v: Boolean) { Prefs.get(c).edit().putBoolean("pad_on", v).commit() }
     fun opacity(c: Context = ctx()): Int = Prefs.get(c).getInt("pad_opacity", 70).coerceIn(15, 100)
     fun setOpacity(c: Context, v: Int) { Prefs.get(c).edit().putInt("pad_opacity", v.coerceIn(15, 100)).commit() }
+    // How many stick updates per second the game is sent at most (0 = one for every touch sample). Fewer, evenly spaced updates keep the
+    // game's input queue short, which is what makes a stick feel late on a game that runs at a low frame rate.
+    val stickRates = intArrayOf(30, 60, 90, 120, 0)
+    fun stickHz(c: Context = ctx()): Int = Prefs.get(c).getInt("pad_stick_hz", 60)
+    fun setStickHz(c: Context, v: Int) { Prefs.get(c).edit().putInt("pad_stick_hz", v).commit() }
     fun haptics(c: Context = ctx()): Boolean = Prefs.get(c).getBoolean("pad_haptics", true)
     fun setHaptics(c: Context, v: Boolean) { Prefs.get(c).edit().putBoolean("pad_haptics", v).commit() }
 
