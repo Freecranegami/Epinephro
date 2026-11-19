@@ -24,6 +24,7 @@
 #include "sgsrq_spv.h"
 #include "mwsr_spv.h"
 #include "egsr_spv.h"
+#include "fsr1p_spv.h"
 #include "fxaa_spv.h"
 #include "fsr_spv.h"
 #include "scale_spv.h"
@@ -246,7 +247,7 @@ typedef struct {
     VkRect2D rect;                       /* where the picture goes on the screen (smaller than the screen when the ratio is kept) */
     int mode, norcas; float rcas; VkImage uimg[MAXI]; VkDeviceMemory umem[MAXI]; VkImageView uview[MAXI]; VkFramebuffer ufb[MAXI];
     VkDescriptorSet dsu[MAXI]; VkPipeline pipee; VkShaderModule efs;
-    float vinfo[16]; int mw, e2; uint32_t easu[16], rcasc[4];      /* push constants, same for every pass of the chain */
+    float vinfo[16]; int mw, e2, fp; uint32_t easu[16], rcasc[4];      /* push constants, same for every pass of the chain */
     /* frame generation (LSFG): the proxy image is copied into fimg[], the generated frame lands in oimg and is run through
      * the same chain as a real frame, as "slot n" (cmdg[j] draws it into swapchain image j) */
     int lg, lgbad, ctx; VkQueue lgq; unsigned long fidx;
@@ -271,7 +272,7 @@ int vkshim_sgsr_enabled(void) {
     static int s = -1;
     if (s < 0) {
         const char *e = getenv("LAS_SGSR"), *f = getenv("LAS_FSR"), *k = getenv("LAS_KEEP"), *w = getenv("LAS_RES_W");
-        s = ((e && *e >= '1' && *e <= '5') ||   /* every upscaler (SGSR, SGSR Quality, MWSR, EGSR), at native resolution too */
+        s = ((e && *e >= '1' && *e <= '6') ||   /* every upscaler (SGSR, SGSR Quality, MWSR, EGSR), at native resolution too */
               (f && *f == '1') || (k && *k == '1' && w && atoi(w) > 0)) ? 1 : 0;
     }
     return s || vkshim_lsfg_wanted() || epi_wanted();
@@ -281,7 +282,7 @@ int vkshim_sgsr_enabled(void) {
 static int sgsr_mode(void) {
     const char *f = getenv("LAS_FSR"), *e = getenv("LAS_SGSR");
     if (f && *f == '1') return 2;
-    if (e && (*e >= '1' && *e <= '5')) return 1;                /* LAS_SGSR=2 is the same pass with the edge-direction shader (SGSR Quality) */
+    if (e && (*e >= '1' && *e <= '6')) return 1;                /* LAS_SGSR=2 is the same pass with the edge-direction shader (SGSR Quality) */
     return 3;
 }
 
@@ -420,7 +421,7 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
                             (c->mode == 2 && !c->norcas) ? &c->dsu[slot] : (c->fx ? &c->dsq[slot] : &c->ds[slot]), 0, NULL);
     if (c->mode == 2 && c->norcas) F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 64, c->easu);   /* EASU straight into the final image */
     else if (c->mode == 2) F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, c->rcasc);   /* RCAS: sharpen at full size */
-    else F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, c->e2 ? 64 : c->mw ? 48 : 16, c->vinfo);
+    else F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, c->fp ? 80 : c->e2 ? 64 : c->mw ? 48 : 16, c->fp ? (const void *)c->easu : (const void *)c->vinfo);
     F.CmdDraw(cb2, 3, 1, 0, 0);
     F.CmdEndRenderPass(cb2);
     if (c->epi && !c->pre) EP.record(c->epi, cb2, (uint64_t)c->fb[fbi], slot);
@@ -602,7 +603,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT };
     VkDescriptorSetLayoutCreateInfo dli = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 1, .pBindings = &b };
     ST("create descriptor set layout", F.CreateDescriptorSetLayout(d, &dli, NULL, &c->dsl));
-    VkPushConstantRange pcr = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, 64 };
+    VkPushConstantRange pcr = { VK_SHADER_STAGE_FRAGMENT_BIT, 0, 80 };
     VkPipelineLayoutCreateInfo pli = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &c->dsl,
         .pushConstantRangeCount = 1, .pPushConstantRanges = &pcr };
     ST("create pipeline layout", F.CreatePipelineLayout(d, &pli, NULL, &c->pl));
@@ -661,9 +662,9 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
     } else {
         smi.codeSize = sizeof sgsr_vs_spv; smi.pCode = sgsr_vs_spv;
         ST("create vertex shader", F.CreateShaderModule(d, &smi, NULL, &c->vs));
-        { const char *sq = getenv("LAS_SGSR"); int q = sq && *sq == '2'; c->mw = sq && *sq == '4'; c->e2 = sq && *sq == '5';        /* SGSR Quality: the edge-direction shader, same inputs */
-          smi.codeSize = c->e2 ? sizeof egsr_fs_spv : c->mw ? sizeof mwsr_fs_spv : q ? sizeof sgsrq_fs_spv : sizeof sgsr_fs_spv; smi.pCode = c->e2 ? egsr_fs_spv : c->mw ? mwsr_fs_spv : q ? sgsrq_fs_spv : sgsr_fs_spv;
-          LOGI("sgsr: SGSR 1 %s shader", q ? "Quality (edge direction)" : "standard"); }
+        { const char *sq = getenv("LAS_SGSR"); int q = sq && *sq == '2'; c->mw = sq && *sq == '4'; c->e2 = sq && *sq == '5'; c->fp = sq && *sq == '6';        /* SGSR Quality: the edge-direction shader, same inputs */
+          smi.codeSize = c->fp ? sizeof fsr1p_fs_spv : c->e2 ? sizeof egsr_fs_spv : c->mw ? sizeof mwsr_fs_spv : q ? sizeof sgsrq_fs_spv : sizeof sgsr_fs_spv; smi.pCode = c->fp ? fsr1p_fs_spv : c->e2 ? egsr_fs_spv : c->mw ? mwsr_fs_spv : q ? sgsrq_fs_spv : sgsr_fs_spv;
+          LOGI("sgsr: SGSR 1 %s shader", c->fp ? "FSR-1P (one-pass EASU+RCAS)" : q ? "Quality (edge direction)" : "standard"); }
         ST("create fragment shader", F.CreateShaderModule(d, &smi, NULL, &c->fs));
         ST("create pipeline", mk_pipe(c, c->vs, c->fs, c->rp, c->rect, &c->pipe));
     }
@@ -827,7 +828,7 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
     { const char *fe = getenv("LAS_FXAA"); c->fx = (fe && *fe == '1'); }
     { const char *ff = getenv("LAS_FSR"), *rs = getenv("LAS_RCAS");
       c->mode = wantMode; (void)ff;
-      c->rcas = (rs && *rs) ? (float)atof(rs) : 0.2f;
+      { const char *u = getenv("LAS_SGSR"); c->rcas = (rs && *rs) ? (float)atof(rs) : (u && *u == '6') ? 0.1f : 0.2f; }
       if (c->rcas < 0.0f) c->rcas = 0.0f;
       if (c->rcas > 2.0f) c->rcas = 2.0f;
       c->norcas = c->mode == 2 && c->rcas >= 1.999f; }      /* sharpness 0 % = no RCAS pass: EASU draws straight into the final image */

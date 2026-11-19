@@ -878,7 +878,7 @@ class MainActivity : Activity() {
         action(b, "Upscaler (SGSR / FSR)", Tweaks.upscalers[Tweaks.upscaler(this)].substringBefore(" (")) { chooseUpscaler(outView) }
         action(b, "EGSR look", "Natural, Crisp (FSR 1 sharpness) or Punchy") { chooseEpiSr2Look(outView) }
         action(b, "EGSR tuning", "boost, limit, edge, compare split") { chooseEpiSr2(outView) }
-        action(b, "RCAS sharpness (FSR 1)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
+        action(b, "RCAS sharpness (FSR 1, FSR-1P)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
         toggle(b, "Ignore notch", "Draws the game under the camera cut-out, so it uses the whole screen. Parts of the game's picture at the edge can be hidden by the notch.",
             { Tweaks.ignoreNotch(this) }) { Tweaks.setIgnoreNotch(this, !Tweaks.ignoreNotch(this)); outView.text = "Ignore notch ${if (Tweaks.ignoreNotch(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
         toggle(b, "Stretch to fit", "Off keeps the picture's ratio with black bars", { Tweaks.stretch(this) }) { toggleStretch(outView) }
