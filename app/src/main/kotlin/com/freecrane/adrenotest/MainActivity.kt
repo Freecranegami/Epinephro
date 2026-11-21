@@ -476,6 +476,36 @@ class MainActivity : Activity() {
                    else "GPU command trace OFF. Applies the next time the game starts."
     }
 
+    private fun toggleHdr(out: TextView) {
+        val screen = Tweaks.hdrScreen(this)
+        if (screen == null) {
+            out.text = "This screen does not report HDR10 support, so HDR output can't be turned on."
+            return
+        }
+        val on = !Tweaks.hdr(this)
+        Tweaks.setHdr(this, on)
+        out.text = if (on) "HDR10 output ON (screen peak ${if (screen > 0) "$screen nits" else "not reported, 600 assumed"}). The game's picture is expanded to HDR10: highlights get brighter, colours use the wide gamut. It works on any game but is a guess, not the game's own HDR. It adds one full-screen pass. The Guest log says `hdr: on` or why not (Light mode OFF to see it). Applies the next time the game starts."
+                   else "HDR10 output OFF. Applies the next time the game starts."
+    }
+
+    private fun chooseHdrWhite() {
+        val names = Tweaks.hdrWhites.map { "$it nits" + if (it == 200) " (default)" else "" }.toTypedArray()
+        MaterialAlertDialogBuilder(this).setTitle("HDR paper white")
+            .setSingleChoiceItems(names, Tweaks.hdrWhites.indexOf(Tweaks.hdrWhite(this)).coerceAtLeast(0)) { d, which ->
+                Tweaks.setHdrWhite(this, Tweaks.hdrWhites[which]); d.dismiss(); refreshPage()
+                outView.text = "HDR paper white: ${names[which]}. How bright an SDR white becomes. Raise it if the picture looks dim next to normal SDR, lower it to save battery. Applies the next time the game starts."
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun chooseHdrBoost() {
+        val names = Tweaks.hdrBoosts.map { if (it == 0) "Off (colours and brightness as SDR)" else "$it %" }.toTypedArray()
+        MaterialAlertDialogBuilder(this).setTitle("HDR highlight boost")
+            .setSingleChoiceItems(names, Tweaks.hdrBoosts.indexOf(Tweaks.hdrBoost(this)).coerceAtLeast(0)) { d, which ->
+                Tweaks.setHdrBoost(this, Tweaks.hdrBoosts[which]); d.dismiss(); refreshPage()
+                outView.text = "HDR highlight boost: ${names[which]}. How far the brightest parts (sun, lights, glows) are pushed towards the screen's peak. Dark and mid tones are left alone. Applies the next time the game starts."
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     private fun chooseResolution(out: TextView) {
         val (sw, sh) = Tweaks.screenSize(this)
         val pcts = intArrayOf(100, 90, 80, 75, 66, 50)
@@ -886,6 +916,9 @@ class MainActivity : Activity() {
         action(b, "EGSR look", "Natural, Crisp (FSR 1 sharpness) or Punchy") { chooseEpiSr2Look(outView) }
         action(b, "EGSR tuning", "boost, limit, edge, compare split") { chooseEpiSr2(outView) }
         action(b, "Variable-rate shading (experimental)", Tweaks.vrsModes[Tweaks.vrs(this)]) { chooseVrs() }
+        toggle(b, "HDR10 output (experimental)", "Expands the game's picture to HDR10 on an HDR screen: brighter highlights, wider colours. Works on any game", { Tweaks.hdr(this) }) { toggleHdr(outView) }
+        action(b, "HDR paper white", "${Tweaks.hdrWhite(this)} nits") { chooseHdrWhite() }
+        action(b, "HDR highlight boost", if (Tweaks.hdrBoost(this) == 0) "Off" else "${Tweaks.hdrBoost(this)} %") { chooseHdrBoost() }
         action(b, "Frame pacing", if (Tweaks.pace(this) == 0) "Off" else "${Tweaks.pace(this)} fps, evenly spaced") { choosePace() }
         action(b, "RCAS sharpness (FSR 1, FSR-1P)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
         toggle(b, "Ignore notch", "Draws the game under the camera cut-out, so it uses the whole screen. Parts of the game's picture at the edge can be hidden by the notch.",

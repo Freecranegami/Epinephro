@@ -71,7 +71,7 @@ DIAGV = {"vkCmdSetViewport": (4, "vkshim_diag_viewport(a1, a2, a3)"),
          "vkCmdWriteTimestamp": (4, "vkshim_diag_ts_write()"),
          "vkCmdWriteTimestamp2": (4, "vkshim_diag_ts_write()"),
          "vkCmdWriteTimestamp2KHR": (4, "vkshim_diag_ts_write()")}
-DIAGR = {"vkCreateImage": "vkshim_diag_image(a1)", "vkCreateFramebuffer": "vkshim_diag_framebuffer(a1)",
+DIAGR = {"vkCreateInstance": "a0 = vkshim_hdr_instance_pre(a0)", "vkCreateImage": "vkshim_diag_image(a1)", "vkCreateFramebuffer": "vkshim_diag_framebuffer(a1)",
          "vkGetQueryPoolResults": "vkshim_diag_ts_read()"}
 # draw commands (up to 7 register arguments): counted by the depth diagnostic, passed on untouched
 DIAGV8 = {n: "vkshim_dd_draw()" for n in ("vkCmdDraw", "vkCmdDrawIndexed", "vkCmdDrawIndirect", "vkCmdDrawIndexedIndirect",
@@ -233,7 +233,7 @@ lines.append("extern void vkshim_diag_viewport(long, long, long); extern void vk
 lines.append("extern void vkshim_diag_scissor(long, long, long); extern void vkshim_diag_renderpass(long); extern void vkshim_diag_rendering(long);")
 lines.append("extern void vkshim_diag_image(long); extern void vkshim_diag_framebuffer(long); extern void vkshim_diag_ts_write(void); extern void vkshim_diag_ts_read(void);")
 lines.append("extern void vkshim_diag_qpool(long, long, long); extern void vkshim_diag_qresults(long, long, long, long, long, long, long, long);")
-lines.append("extern void vkshim_lsfg_instance(long, long); extern void vkshim_lsfg_predevice(long, long);")
+lines.append("extern void vkshim_lsfg_instance(long, long); extern void vkshim_lsfg_predevice(long, long); extern long vkshim_hdr_instance_pre(long);")
 lines.append("extern void vkshim_pc_device(long, long); extern long vkshim_pc_pipelines(long, long); extern void vkshim_pc_after(long, long);")
 lines.append("extern long vkshim_pc_create_info(long, long); extern void vkshim_pc_created(long, long, long); extern void vkshim_pc_destroy(long, long);")
 lines.append("extern void vkshim_perf_present(void);")

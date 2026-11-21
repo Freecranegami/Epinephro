@@ -33,6 +33,7 @@ class GuestNativeActivity : NativeActivity() {
             throw t
         }
         super.onCreate(savedInstanceState)
+        Tweaks.applyWindow(this, window)
         Log.i(logTag, "native activity created")
     }
 

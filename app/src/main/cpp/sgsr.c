@@ -25,6 +25,7 @@
 #include "mwsr_spv.h"
 #include "egsr_spv.h"
 #include "fsr1p_spv.h"
+#include "hdr_spv.h"
 #include "fxaa_spv.h"
 #include "fsr_spv.h"
 #include "scale_spv.h"
@@ -68,6 +69,7 @@ static struct {
     PFN_vkQueueSubmit QueueSubmit; PFN_vkGetSwapchainImagesKHR GetSwapchainImagesKHR;
     PFN_vkDestroySwapchainKHR DestroySwapchainKHR; PFN_vkDeviceWaitIdle DeviceWaitIdle;
     PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR GetCaps; PFN_vkGetPhysicalDeviceMemoryProperties GetMemProps;
+    PFN_vkGetPhysicalDeviceSurfaceFormatsKHR GetFmts;
     PFN_vkCmdBlitImage CmdBlitImage; PFN_vkQueueWaitIdle QueueWaitIdle; PFN_vkAcquireNextImageKHR AcquireNextImageKHR;
 } F;
 static int g_fn_state = 0;                       /* 0 = not tried, 1 = ready, -1 = a function is missing */
@@ -100,6 +102,7 @@ static int fn_init(void) {
     LD(DestroySwapchainKHR, "DestroySwapchainKHR"); LD(DeviceWaitIdle, "DeviceWaitIdle");
     LD(CmdBlitImage, "CmdBlitImage"); LD(QueueWaitIdle, "QueueWaitIdle"); LD(AcquireNextImageKHR, "AcquireNextImageKHR");
     LD(GetCaps, "GetPhysicalDeviceSurfaceCapabilitiesKHR"); LD(GetMemProps, "GetPhysicalDeviceMemoryProperties");
+    *(void **)&F.GetFmts = vkshim_real_proc("vkGetPhysicalDeviceSurfaceFormatsKHR");   /* optional: only the HDR output needs it */
 #undef LD
     if (missing) LOGI("sgsr: off, the driver has no %s", missing);
     g_fn_state = missing ? -1 : 1;
@@ -254,6 +257,9 @@ typedef struct {
     VkImage fimg[2], oimg; VkDeviceMemory fmem[2], omem; VkImageView oview;
     VkCommandBuffer cpy[MAXIMG][2], cmdg[MAXIMG]; VkSemaphore semg[MAXIMG], acq[MAXIMG];
     unsigned long presents;
+    /* HDR10 output (LAS_HDR=1): the chain draws as usual (into himg when it is not the last pass), then one pass expands it to HDR10 */
+    int hdr, hdirect; VkFormat hfmt; VkRenderPass rph; VkPipeline pipeh; VkShaderModule hvs, hfs; float hp[4];
+    VkImage himg[MAXI]; VkDeviceMemory hmem[MAXI]; VkImageView hview[MAXI]; VkFramebuffer hfb[MAXI]; VkDescriptorSet dsh[MAXI];
     /* EpiShaders: the chain's picture goes into eimg first, the effects then render into the swapchain image */
     void *epi; int epiUp, edirect; VkImageView eview; VkFramebuffer efb;   /* eview: the effects' input image (owned by libepifx), not in direct mode */
 } Sg;
@@ -268,6 +274,61 @@ static Sg *find(VkSwapchainKHR sc) {
     return r;
 }
 
+/* ---------- HDR10 output ---------- */
+#define HDR_COLORSPACE 1000104008   /* VK_COLOR_SPACE_HDR10_ST2084_EXT */
+static int hdr_wanted(void) {
+    static int s = -1;
+    if (s < 0) { const char *e = getenv("LAS_HDR"); s = (e && *e == '1') ? 1 : 0; }
+    return s;
+}
+
+/* The loader only lists HDR surface formats, and accepts HDR swapchains, when the instance enabled VK_EXT_swapchain_colorspace.
+ * A game that never asked for it gets it added here (only when the loader has it). Returns the create info to pass on. */
+long vkshim_hdr_instance_pre(long pci) {
+    if (!hdr_wanted() || !pci) return pci;
+    const VkInstanceCreateInfo *ci = (const VkInstanceCreateInfo *)pci;
+    for (uint32_t i = 0; i < ci->enabledExtensionCount; i++)
+        if (!strcmp(ci->ppEnabledExtensionNames[i], "VK_EXT_swapchain_colorspace")) return pci;
+    typedef VkResult (*pfn_ie)(const char *, uint32_t *, VkExtensionProperties *);
+    pfn_ie ie = (pfn_ie)vkshim_real_proc("vkEnumerateInstanceExtensionProperties");
+    if (!ie) { LOGI("hdr: can't check the instance extensions, HDR stays off"); return pci; }
+    uint32_t n = 0; int has = 0;
+    ie(NULL, &n, NULL);
+    VkExtensionProperties *ep = n ? calloc(n, sizeof *ep) : NULL;
+    if (ep && ie(NULL, &n, ep) >= 0) for (uint32_t i = 0; i < n; i++) if (!strcmp(ep[i].extensionName, "VK_EXT_swapchain_colorspace")) has = 1;
+    free(ep);
+    if (!has) { LOGI("hdr: the system's Vulkan has no VK_EXT_swapchain_colorspace, HDR stays off"); return pci; }
+    static VkInstanceCreateInfo copy;
+    const char **names = malloc((ci->enabledExtensionCount + 1) * sizeof *names);
+    if (!names) return pci;
+    for (uint32_t i = 0; i < ci->enabledExtensionCount; i++) names[i] = ci->ppEnabledExtensionNames[i];
+    names[ci->enabledExtensionCount] = "VK_EXT_swapchain_colorspace";
+    copy = *ci; copy.enabledExtensionCount++; copy.ppEnabledExtensionNames = names;
+    LOGI("hdr: VK_EXT_swapchain_colorspace added to the game's instance");
+    return (long)&copy;
+}
+
+static int is_srgb_fmt(VkFormat f) { return f == VK_FORMAT_R8G8B8A8_SRGB || f == VK_FORMAT_B8G8R8A8_SRGB || f == VK_FORMAT_A8B8G8R8_SRGB_PACK32; }
+
+/* the 10-bit format the screen accepts with the HDR10 colour space, or 0 */
+static VkFormat hdr_pick_format(VkPhysicalDevice phys, VkSurfaceKHR surf) {
+    if (!F.GetFmts) { LOGI("hdr: off, no vkGetPhysicalDeviceSurfaceFormatsKHR"); return 0; }
+    uint32_t n = 0;
+    if (F.GetFmts(phys, surf, &n, NULL) != VK_SUCCESS || !n) { LOGI("hdr: off, the screen lists no surface formats"); return 0; }
+    VkSurfaceFormatKHR *f = calloc(n, sizeof *f);
+    if (!f || F.GetFmts(phys, surf, &n, f) < 0) { free(f); return 0; }
+    VkFormat pick = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        LOGI("hdr: surface format %d, colour space %d", (int)f[i].format, (int)f[i].colorSpace);
+        if ((int)f[i].colorSpace == HDR_COLORSPACE && f[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) pick = f[i].format;
+    }
+    for (uint32_t i = 0; i < n && !pick; i++)
+        if ((int)f[i].colorSpace == HDR_COLORSPACE && f[i].format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) pick = f[i].format;
+    free(f);
+    if (!pick) LOGI("hdr: off, the screen/system offers no 10-bit HDR10 surface format (is the window in HDR colour mode?)");
+    return pick;
+}
+
 int vkshim_sgsr_enabled(void) {
     static int s = -1;
     if (s < 0) {
@@ -275,7 +336,7 @@ int vkshim_sgsr_enabled(void) {
         s = ((e && *e >= '1' && *e <= '6') ||   /* every upscaler (SGSR, SGSR Quality, MWSR, EGSR), at native resolution too */
               (f && *f == '1') || (k && *k == '1' && w && atoi(w) > 0)) ? 1 : 0;
     }
-    return s || vkshim_lsfg_wanted() || epi_wanted();
+    return s || vkshim_lsfg_wanted() || epi_wanted() || hdr_wanted();
 }
 
 /* 1 = SGSR, 2 = FSR 1, 3 = plain scaling (only used to keep the picture's ratio when no upscaler is chosen) */
@@ -289,6 +350,16 @@ static int sgsr_mode(void) {
 /* frees everything except the real swapchain itself */
 static void teardown(Sg *c) {
     VkDevice d = c->dev;
+    for (int i = 0; i < MAXI; i++) {
+        if (c->hfb[i]) F.DestroyFramebuffer(d, c->hfb[i], NULL);
+        if (c->hview[i]) F.DestroyImageView(d, c->hview[i], NULL);
+        if (c->himg[i]) F.DestroyImage(d, c->himg[i], NULL);
+        if (c->hmem[i]) F.FreeMemory(d, c->hmem[i], NULL);
+    }
+    if (c->pipeh) F.DestroyPipeline(d, c->pipeh, NULL);
+    if (c->hvs) F.DestroyShaderModule(d, c->hvs, NULL);
+    if (c->hfs) F.DestroyShaderModule(d, c->hfs, NULL);
+    if (c->rph) F.DestroyRenderPass(d, c->rph, NULL);
     if (c->efb) F.DestroyFramebuffer(d, c->efb, NULL);
     if (c->epi && EP.destroy) EP.destroy(c->epi);
     if (c->pool) F.DestroyCommandPool(d, c->pool, NULL);           /* frees its command buffers */
@@ -376,6 +447,18 @@ static VkResult mk_pipe(Sg *c, VkShaderModule vs, VkShaderModule fs, VkRenderPas
     return F.CreateGraphicsPipelines(c->dev, VK_NULL_HANDLE, 1, &gpi, NULL, out);
 }
 
+/* the HDR pass: reads the finished SDR picture (ds), writes the HDR10 swapchain image */
+static void hdr_pass(Sg *c, VkCommandBuffer cb2, uint32_t fbi, VkDescriptorSet ds, VkClearValue black) {
+    VkRenderPassBeginInfo rb = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = c->rph, .framebuffer = c->fb[fbi],
+        .renderArea = { { 0, 0 }, c->out }, .clearValueCount = 1, .pClearValues = &black };
+    F.CmdBeginRenderPass(cb2, &rb, VK_SUBPASS_CONTENTS_INLINE);
+    F.CmdBindPipeline(cb2, VK_PIPELINE_BIND_POINT_GRAPHICS, c->pipeh);
+    F.CmdBindDescriptorSets(cb2, VK_PIPELINE_BIND_POINT_GRAPHICS, c->pl, 0, 1, &ds, 0, NULL);
+    F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, c->hp);
+    F.CmdDraw(cb2, 3, 1, 0, 0);
+    F.CmdEndRenderPass(cb2);
+}
+
 /* Records the chain for one picture: [FXAA] -> [EASU] -> final pass into swapchain framebuffer fbi.
  * slot < n: the game's proxy image (left in PRESENT_SRC by the game); slot n (gen): the generated frame (GENERAL). */
 static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen, VkClearValue black, VkImageSubresourceRange rng) {
@@ -409,11 +492,13 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
         F.CmdDraw(cb2, 3, 1, 0, 0);
         F.CmdEndRenderPass(cb2);
     }
-    if (c->epi && c->edirect && !c->pre) {                            /* nothing to scale: the effects read the game's image and write the swapchain image */
+    if (c->hdr && c->hdirect) {                                       /* nothing to enlarge: the HDR pass is the only pass */
+        hdr_pass(c, cb2, fbi, c->ds[slot], black);
+    } else if (c->epi && c->edirect && !c->pre) {                            /* nothing to scale: the effects read the game's image and write the swapchain image */
         EP.record(c->epi, cb2, (uint64_t)c->fb[fbi], slot);
     } else {
-    VkRenderPassBeginInfo rbi = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = (c->epi && !c->pre) ? c->rpm : c->rp,
-        .framebuffer = (c->epi && !c->pre) ? c->efb : c->fb[fbi],
+    VkRenderPassBeginInfo rbi = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = ((c->epi && !c->pre) || c->hdr) ? c->rpm : c->rp,
+        .framebuffer = (c->epi && !c->pre) ? c->efb : (c->hdr ? c->hfb[fbi] : c->fb[fbi]),
         .renderArea = { { 0, 0 }, c->out }, .clearValueCount = 1, .pClearValues = &black };
     F.CmdBeginRenderPass(cb2, &rbi, VK_SUBPASS_CONTENTS_INLINE);
     F.CmdBindPipeline(cb2, VK_PIPELINE_BIND_POINT_GRAPHICS, c->pipe);
@@ -424,6 +509,7 @@ static void rec(Sg *c, VkCommandBuffer cb2, uint32_t slot, uint32_t fbi, int gen
     else F.CmdPushConstants(cb2, c->pl, VK_SHADER_STAGE_FRAGMENT_BIT, 0, c->fp ? 80 : c->e2 ? 64 : c->mw ? 48 : 16, c->fp ? (const void *)c->easu : (const void *)c->vinfo);
     F.CmdDraw(cb2, 3, 1, 0, 0);
     F.CmdEndRenderPass(cb2);
+    if (c->hdr) hdr_pass(c, cb2, fbi, c->dsh[fbi], black);
     if (c->epi && !c->pre) EP.record(c->epi, cb2, (uint64_t)c->fb[fbi], slot);
     }
     /* hand the image back: the game's in PRESENT_SRC, the generated one in GENERAL for the next generation */
@@ -462,7 +548,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             ST("bind proxy memory", F.BindImageMemory(d, c->pimg[i], c->pmem[i], 0));
             vci.image = c->pimg[i];
             ST("create proxy view", F.CreateImageView(d, &vci, NULL, &c->pview[i]));
-            vci.image = c->rimg[i]; vci.format = c->ofmt;
+            vci.image = c->rimg[i]; vci.format = c->hdr ? c->hfmt : c->ofmt;
             ST("create swapchain view", F.CreateImageView(d, &vci, NULL, &c->rview[i]));
         } else {
             /* slot n: the generated frame (float image the frame generation writes into), plus two inputs for it */
@@ -529,8 +615,15 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
     VkRenderPassCreateInfo rpi = { .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO, .attachmentCount = 1, .pAttachments = &ad,
         .subpassCount = 1, .pSubpasses = &sp, .dependencyCount = 1, .pDependencies = &dep };
     ST("create render pass", F.CreateRenderPass(d, &rpi, NULL, &c->rp));
+    if (c->hdr) {                                          /* the swapchain is 10-bit: its own pass; the chain keeps the 8-bit one above */
+        VkAttachmentDescription ah = ad;
+        ah.format = c->hfmt;
+        ah.loadOp = c->hdirect ? ad.loadOp : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        VkRenderPassCreateInfo rph = rpi; rph.pAttachments = &ah;
+        ST("create HDR render pass", F.CreateRenderPass(d, &rph, NULL, &c->rph));
+    }
     for (uint32_t i = 0; i < n; i++) {
-        VkFramebufferCreateInfo fi = { .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, .renderPass = c->rp, .attachmentCount = 1,
+        VkFramebufferCreateInfo fi = { .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, .renderPass = c->hdr ? c->rph : c->rp, .attachmentCount = 1,
             .pAttachments = &c->rview[i], .width = c->out.width, .height = c->out.height, .layers = 1 };
         ST("create framebuffer", F.CreateFramebuffer(d, &fi, NULL, &c->fb[i]));
     }
@@ -548,7 +641,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             .subpassCount = 1, .pSubpasses = &sp, .dependencyCount = 2, .pDependencies = dm0 };
         ST("create intermediate render pass", F.CreateRenderPass(d, &rpm0, NULL, &c->rpm));
     }
-    if (epi_wanted() && epi_load()) {
+    if (epi_wanted() && !c->hdr && epi_load()) {
         /* Direct mode: when there is nothing to scale (same size, no upscaler, no black bars, no frame generation) the effects read the
          * game's images themselves, which saves a whole full-screen copy of the picture. */
         int direct = c->pre || (c->ofmt == c->fmt && c->mode == 3 && !c->fx && !c->lg && c->in.width == c->out.width && c->in.height == c->out.height &&
@@ -567,7 +660,7 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         c->edirect = c->epi && direct;
     }
     if (c->pre && !c->epi) { c->pre = 0; c->fx = c->fx0; LOGI("epifx: can't run before the upscaler, off"); }
-    if (c->fx || c->mode == 2 || (c->epi && !c->edirect)) {
+    if (c->fx || c->mode == 2 || (c->epi && !c->edirect) || (c->hdr && !c->hdirect)) {
         VkAttachmentDescription am = ad;
         am.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkSubpassDependency dm[2] = {
@@ -584,6 +677,27 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             VkFramebufferCreateInfo fe = { .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, .renderPass = c->rpm, .attachmentCount = 1,
                 .pAttachments = &c->eview, .width = c->out.width, .height = c->out.height, .layers = 1 };
             ST("create effects framebuffer", F.CreateFramebuffer(d, &fe, NULL, &c->efb));
+        }
+        if (c->hdr && !c->hdirect) {                       /* the chain's picture, at screen size, for the HDR pass to read */
+            for (uint32_t i = 0; i < n; i++) {
+                VkImageCreateInfo hi = { .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = c->ofmt,
+                    .extent = { c->out.width, c->out.height, 1 }, .mipLevels = 1, .arrayLayers = 1, .samples = VK_SAMPLE_COUNT_1_BIT,
+                    .tiling = VK_IMAGE_TILING_OPTIMAL, .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE, .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED };
+                VkMemoryRequirements hmr;
+                VkMemoryAllocateInfo hma = { .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+                ST("create HDR input image", F.CreateImage(d, &hi, NULL, &c->himg[i]));
+                F.GetImageMemoryRequirements(d, c->himg[i], &hmr);
+                hma.allocationSize = hmr.size; hma.memoryTypeIndex = pick_memtype(d, hmr.memoryTypeBits);
+                ST("allocate HDR input memory", F.AllocateMemory(d, &hma, NULL, &c->hmem[i]));
+                ST("bind HDR input memory", F.BindImageMemory(d, c->himg[i], c->hmem[i], 0));
+                VkImageViewCreateInfo hv = { .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = c->himg[i], .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                    .format = c->ofmt, .subresourceRange = rng };
+                ST("create HDR input view", F.CreateImageView(d, &hv, NULL, &c->hview[i]));
+                VkFramebufferCreateInfo fh = { .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, .renderPass = c->rpm, .attachmentCount = 1,
+                    .pAttachments = &c->hview[i], .width = c->out.width, .height = c->out.height, .layers = 1 };
+                ST("create HDR input framebuffer", F.CreateFramebuffer(d, &fh, NULL, &c->hfb[i]));
+            }
         }
         for (uint32_t i = 0; i < n1; i++) {
             if (c->fx) {
@@ -607,12 +721,13 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
     VkPipelineLayoutCreateInfo pli = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1, .pSetLayouts = &c->dsl,
         .pushConstantRangeCount = 1, .pPushConstantRanges = &pcr };
     ST("create pipeline layout", F.CreatePipelineLayout(d, &pli, NULL, &c->pl));
-    uint32_t nsets = n1 * (1 + (c->fx ? 1 : 0) + (c->mode == 2 ? 1 : 0));
+    uint32_t nbase = n1 * (1 + (c->fx ? 1 : 0) + (c->mode == 2 ? 1 : 0));
+    uint32_t nsets = nbase + ((c->hdr && !c->hdirect) ? n : 0);
     VkDescriptorPoolSize ps = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, nsets };
     VkDescriptorPoolCreateInfo dpi = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, .maxSets = nsets, .poolSizeCount = 1, .pPoolSizes = &ps };
     ST("create descriptor pool", F.CreateDescriptorPool(d, &dpi, NULL, &c->dp));
-    VkDescriptorSetLayout lays[3 * MAXI];
-    VkDescriptorSet sets[3 * MAXI];
+    VkDescriptorSetLayout lays[4 * MAXI];
+    VkDescriptorSet sets[4 * MAXI];
     for (uint32_t i = 0; i < nsets; i++) lays[i] = c->dsl;
     VkDescriptorSetAllocateInfo dai = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .descriptorPool = c->dp,
         .descriptorSetCount = nsets, .pSetLayouts = lays };
@@ -636,6 +751,15 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
             F.UpdateDescriptorSets(d, 1, &wds, 0, NULL);
         }
     }
+
+    if (c->hdr && !c->hdirect)
+        for (uint32_t i = 0; i < n; i++) {
+            c->dsh[i] = sets[nbase + i];
+            VkDescriptorImageInfo dh = { c->samp, c->hview[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            VkWriteDescriptorSet wh = { .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = c->dsh[i], .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &dh };
+            F.UpdateDescriptorSets(d, 1, &wh, 0, NULL);
+        }
 
     VkShaderModuleCreateInfo smi = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
     VkRect2D full = { { 0, 0 }, c->out };
@@ -667,6 +791,21 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
           LOGI("sgsr: SGSR 1 %s shader", c->fp ? "FSR-1P (one-pass EASU+RCAS)" : q ? "Quality (edge direction)" : "standard"); }
         ST("create fragment shader", F.CreateShaderModule(d, &smi, NULL, &c->fs));
         ST("create pipeline", mk_pipe(c, c->vs, c->fs, c->rp, c->rect, &c->pipe));
+    }
+    if (c->hdr) {
+        smi.codeSize = sizeof sgsr_vs_spv; smi.pCode = sgsr_vs_spv;
+        ST("create HDR vertex shader", F.CreateShaderModule(d, &smi, NULL, &c->hvs));
+        smi.codeSize = sizeof hdr_fs_spv; smi.pCode = hdr_fs_spv;
+        ST("create HDR fragment shader", F.CreateShaderModule(d, &smi, NULL, &c->hfs));
+        ST("create HDR pipeline", mk_pipe(c, c->hvs, c->hfs, c->rph, c->hdirect ? c->rect : full, &c->pipeh));
+        const char *w = getenv("LAS_HDR_WHITE"), *pk = getenv("LAS_HDR_PEAK"), *st = getenv("LAS_HDR_BOOST");
+        float white = w ? (float)atof(w) : 200.0f, peak = pk ? (float)atof(pk) : 600.0f, boost = st ? (float)atof(st) / 100.0f : 0.5f;
+        if (white < 80.0f) white = 80.0f; if (white > 500.0f) white = 500.0f;
+        if (peak < white) peak = white; if (peak > 4000.0f) peak = 4000.0f;
+        if (boost < 0.0f) boost = 0.0f; if (boost > 1.0f) boost = 1.0f;
+        c->hp[0] = white; c->hp[1] = peak; c->hp[2] = boost; c->hp[3] = is_srgb_fmt(c->hdirect ? c->fmt : c->ofmt) ? 1.0f : 0.0f;
+        LOGI("hdr: paper white %.0f nits, peak %.0f nits, highlight boost %.0f %%, %s, %s", white, peak, boost * 100.0f,
+             c->hp[3] > 0.5f ? "input is an sRGB image (already linear when read)" : "input is gamma-encoded", c->hdirect ? "single pass" : "extra pass after the chain");
     }
     if (c->fx && !c->pre) {
         smi.codeSize = sizeof fxaa_vs_spv; smi.pCode = fxaa_vs_spv;
@@ -807,10 +946,15 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
     int wantMode = sgsr_mode();
     int wantLg = vkshim_lsfg_wanted() && lg_load();           /* frame generation needs our own swapchain whatever the sizes */
     int wantEpi = epi_wanted();                               /* so do the effects */
+    int wantHdr = 0; VkFormat hfmt = 0;
+    if (!why && hdr_wanted()) {
+        hfmt = hdr_pick_format(phys, ci.surface); wantHdr = hfmt != 0;
+        if (wantHdr && wantEpi) { LOGI("hdr: EpiShaders effects are off while HDR is on"); wantEpi = 0; }
+    }
     if (!why && caps.currentExtent.width == 0xFFFFFFFFu) why = "surface size unknown";
-    if (!why && !wantLg && !wantEpi && caps.currentExtent.width == ci.imageExtent.width && caps.currentExtent.height == ci.imageExtent.height)
+    if (!why && !wantLg && !wantEpi && !wantHdr && caps.currentExtent.width == ci.imageExtent.width && caps.currentExtent.height == ci.imageExtent.height)
         why = "the game's swapchain is as big as the screen";
-    if (!why && !wantLg && !wantEpi && wantMode == 3 && (uint64_t)ci.imageExtent.width * caps.currentExtent.height == (uint64_t)ci.imageExtent.height * caps.currentExtent.width)
+    if (!why && !wantLg && !wantEpi && !wantHdr && wantMode == 3 && (uint64_t)ci.imageExtent.width * caps.currentExtent.height == (uint64_t)ci.imageExtent.height * caps.currentExtent.width)
         why = "the game's picture already has the screen's ratio";
     if (!why && wantMode != 3 && (caps.currentExtent.width < ci.imageExtent.width || caps.currentExtent.height < ci.imageExtent.height))
         why = "the game's swapchain is bigger than the screen";
@@ -864,8 +1008,10 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
         c->pre = wantEpi && !(pe && *pe == '0') && !c->lg && c->ofmt == c->fmt && scaling;
         if (c->pre) { c->fx0 = c->fx; c->fx = 1; }
     }
+    c->hdr = wantHdr; c->hfmt = hfmt; c->hdirect = c->hdr && c->mode == 3 && !c->fx;
     VkSwapchainCreateInfoKHR rci = ci;
-    rci.imageFormat = c->ofmt;
+    rci.imageFormat = c->hdr ? c->hfmt : c->ofmt;
+    if (c->hdr) rci.imageColorSpace = (VkColorSpaceKHR)HDR_COLORSPACE;
     rci.imageExtent = caps.currentExtent;
     rci.flags = 0;
     rci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -875,6 +1021,11 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
     }
     VkSwapchainKHR sc = VK_NULL_HANDLE;
     long r = real(device, (long)&rci, palloc, (long)&sc, 0, 0, 0, 0);
+    if (r != VK_SUCCESS && c->hdr) {                       /* the system refused the HDR swapchain: carry on in SDR */
+        LOGI("hdr: the HDR swapchain failed (%d), continuing without HDR", (int)r);
+        c->hdr = 0; c->hdirect = 0; rci.imageFormat = c->ofmt; rci.imageColorSpace = ci.imageColorSpace;
+        r = real(device, (long)&rci, palloc, (long)&sc, 0, 0, 0, 0);
+    }
     if (r != VK_SUCCESS) {
         LOGI("sgsr: the full-size swapchain failed (%d), falling back", (int)r);
         c->used = 0; return 0;
@@ -899,6 +1050,7 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
     *res = VK_SUCCESS;
     LOGI("sgsr: on (%s): game renders %ux%u, screen %ux%u, %u images, format %d%s", c->mode == 2 ? "FSR 1 EASU+RCAS" : (c->mode == 1 ? "SGSR 1" : "plain scaling"),
          c->in.width, c->in.height, c->out.width, c->out.height, n, (int)c->fmt, c->fx ? ", FXAA before the upscale" : "");
+    if (c->hdr) LOGI("hdr: on, the screen gets HDR10 (format %d, colour space HDR10 ST 2084)", (int)c->hfmt);
     if (c->lg) LOGI("lsfg: swapchain ready for frame generation (starts at the first present)");
     LOGI("sgsr: picture placed at %d,%d size %ux%u%s", c->rect.offset.x, c->rect.offset.y, c->rect.extent.width, c->rect.extent.height,
          (c->rect.extent.width == c->out.width && c->rect.extent.height == c->out.height) ? " (fills the screen)" : " (ratio kept, black bars)");

@@ -13,6 +13,31 @@ object Tweaks {
     fun light(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("light_mode", true)   // on by default: diagnostics cost CPU on every call
     fun setLight(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("light_mode", on).commit() }
     fun depthDiag(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("depth_diag", false)
+    // HDR10 output: the shim turns the game's SDR picture into HDR10 (brighter highlights, wider colours) on an HDR screen.
+    fun hdr(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("hdr10", false)
+    fun setHdr(ctx: Context, on: Boolean) = Prefs.get(ctx).edit().putBoolean("hdr10", on).apply()
+    val hdrWhites = intArrayOf(120, 160, 200, 250, 300)
+    fun hdrWhite(ctx: Context): Int = Prefs.get(ctx).getInt("hdr_white", 200)
+    fun setHdrWhite(ctx: Context, v: Int) = Prefs.get(ctx).edit().putInt("hdr_white", v).apply()
+    val hdrBoosts = intArrayOf(0, 25, 50, 75, 100)
+    fun hdrBoost(ctx: Context): Int = Prefs.get(ctx).getInt("hdr_boost", 50)
+    fun setHdrBoost(ctx: Context, v: Int) = Prefs.get(ctx).edit().putInt("hdr_boost", v).apply()
+    // What the screen says about HDR10: null when it has none, otherwise its peak brightness in nits (0 when it does not say).
+    fun hdrScreen(ctx: Context): Int? {
+        if (android.os.Build.VERSION.SDK_INT < 26) return null
+        return try {
+            val d = (ctx.getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager).getDisplay(android.view.Display.DEFAULT_DISPLAY)
+            val caps = d.hdrCapabilities ?: return null
+            if (caps.supportedHdrTypes.none { it == android.view.Display.HdrCapabilities.HDR_TYPE_HDR10 }) null
+            else caps.desiredMaxLuminance.toInt().coerceAtLeast(0)
+        } catch (_: Throwable) { null }
+    }
+    // Asks the system for an HDR window; without it the screen stays in SDR whatever the swapchain says.
+    fun applyWindow(ctx: Context, w: android.view.Window) {
+        if (hdr(ctx) && android.os.Build.VERSION.SDK_INT >= 26) {
+            try { w.colorMode = android.content.pm.ActivityInfo.COLOR_MODE_HDR } catch (t: Throwable) { Log.w("GuestHost", "hdr: window colour mode failed", t) }
+        }
+    }
     fun kgslTrace(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("kgsl_trace", false)
     fun setKgslTrace(ctx: Context, on: Boolean) = Prefs.get(ctx).edit().putBoolean("kgsl_trace", on).apply()
     fun setDepthDiag(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("depth_diag", on).commit() }
@@ -219,6 +244,13 @@ object Tweaks {
             Os.setenv("LAS_LSFG_PERF", if (lsfgQuality(ctx)) "0" else "1", true)
             Os.setenv("LAS_LSFG_FLOW", "%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05), true)
             Os.setenv("LAS_DRS", if (drsLock(ctx)) "1" else "0", true)
+            if (hdr(ctx) && hdrScreen(ctx) != null) {
+                val peak = (hdrScreen(ctx) ?: 0).let { if (it <= 0) 600 else it.coerceIn(300, 1500) }
+                Os.setenv("LAS_HDR", "1", true)
+                Os.setenv("LAS_HDR_WHITE", hdrWhite(ctx).toString(), true)
+                Os.setenv("LAS_HDR_PEAK", peak.toString(), true)
+                Os.setenv("LAS_HDR_BOOST", hdrBoost(ctx).toString(), true)
+            }
             Os.setenv("LAS_DEPTHDIAG", if (depthDiag(ctx)) "1" else "0", true)
             if (kgslTrace(ctx) && !l) {
                 val d = File(ctx.getExternalFilesDir(null), "kgsltrace"); d.mkdirs()
