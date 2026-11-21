@@ -488,6 +488,14 @@ class MainActivity : Activity() {
                    else "HDR10 output OFF. Applies the next time the game starts."
     }
 
+    private fun choosePerfMode() {
+        MaterialAlertDialogBuilder(this).setTitle("Overlay detail")
+            .setSingleChoiceItems(PerfOverlay.modes.toTypedArray(), PerfOverlay.mode(this)) { d, which ->
+                PerfOverlay.setMode(this, which); d.dismiss(); refreshPage()
+                outView.text = "Overlay detail: ${PerfOverlay.modes[which].substringBefore(" (")}. GPU load, GPU temperature and the per-core clocks are only shown when the phone lets apps read them; otherwise they say n/a. Applies the next time the game starts."
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     private fun chooseHdrWhite() {
         val names = Tweaks.hdrWhites.map { "$it nits" + if (it == 200) " (default)" else "" }.toTypedArray()
         MaterialAlertDialogBuilder(this).setTitle("HDR paper white")
@@ -1124,6 +1132,7 @@ class MainActivity : Activity() {
             { Tweaks.fsrHalf(this) }) { Tweaks.setFsrHalf(this, !Tweaks.fsrHalf(this)); outView.text = "FSR half precision ${if (Tweaks.fsrHalf(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
         toggle(b, "Performance overlay", "A small card you can drag around the screen: frames per second, CPU temperature and battery (level and power use). Light: one update a second.",
             { PerfOverlay.enabled(this) }) { PerfOverlay.setEnabled(this, !PerfOverlay.enabled(this)); outView.text = "Performance overlay ${if (PerfOverlay.enabled(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
+        action(b, "Overlay detail", PerfOverlay.modes[PerfOverlay.mode(this)].substringBefore(" (")) { choosePerfMode() }
         addCaches(b)
     }
 
