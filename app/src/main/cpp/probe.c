@@ -1348,10 +1348,14 @@ static void *h_dlsym(void *h, const char *n) {
  * Failed calls (other than the retried EINTR/EAGAIN and normal timeouts) and a non-zero reset status are logged.
  */
 #include <sys/ioctl.h>
+int kt_enabled(void); void kt_before(int, unsigned long, void *); void kt_after(int, unsigned long, void *, int);   /* kgsltrace.c */
 static int h_ioctl(int fd, int req, ...) {
     va_list ap; va_start(ap, req); void *arg = va_arg(ap, void *); va_end(ap);
-    int r = ioctl(fd, req, arg); int e = errno;
     unsigned long cmd = (unsigned long)(unsigned int)req;
+    int kt = kt_enabled();
+    if (kt) kt_before(fd, cmd, arg);
+    int r = ioctl(fd, req, arg); int e = errno;
+    if (kt) { kt_after(fd, cmd, arg, r); errno = e; }
     if (r < 0 && e != EINTR && e != EAGAIN && e != ETIMEDOUT) {
         char key[64]; snprintf(key, sizeof key, "ioctl|%lx|%d", cmd, e);
         static volatile int n = 0;
@@ -1469,6 +1473,7 @@ static int fh_patch_cb(struct dl_phdr_info *info, size_t sz, void *data) {
     if (!info->dlpi_name) return 0;
     int is_rdr = strstr(info->dlpi_name, "librdr.so") != NULL;
     int is_drv = strstr(info->dlpi_name, "/files/driver/") != NULL || strstr(info->dlpi_name, "/files/drivers/") != NULL;      /* the custom Vulkan driver */
+    if (!is_drv && strstr(info->dlpi_name, "libgsl.so") && kt_enabled()) is_drv = 1;      /* the stock Qualcomm driver's kernel layer, only for the KGSL trace */
     if (is_drv && g_light) return 0;                 /* light mode: no ioctl watching */
     /* ANGLE: a game that sets up OpenGL ES in Java (EGL10/EGL14, e.g. GTA San Andreas) goes through the framework's
      * libandroid_runtime.so into the system libEGL. Point that library's EGL imports at ANGLE's, so Java and the game's

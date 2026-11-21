@@ -13,6 +13,8 @@ object Tweaks {
     fun light(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("light_mode", true)   // on by default: diagnostics cost CPU on every call
     fun setLight(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("light_mode", on).commit() }
     fun depthDiag(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("depth_diag", false)
+    fun kgslTrace(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("kgsl_trace", false)
+    fun setKgslTrace(ctx: Context, on: Boolean) = Prefs.get(ctx).edit().putBoolean("kgsl_trace", on).apply()
     fun setDepthDiag(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("depth_diag", on).commit() }
 
     // Turnip (open-source Mesa driver) settings, handed over as environment variables before the driver loads.
@@ -218,6 +220,11 @@ object Tweaks {
             Os.setenv("LAS_LSFG_FLOW", "%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05), true)
             Os.setenv("LAS_DRS", if (drsLock(ctx)) "1" else "0", true)
             Os.setenv("LAS_DEPTHDIAG", if (depthDiag(ctx)) "1" else "0", true)
+            if (kgslTrace(ctx) && !l) {
+                val d = File(ctx.getExternalFilesDir(null), "kgsltrace"); d.mkdirs()
+                Os.setenv("LAS_KGSL_TRACE", "1", true)
+                Os.setenv("LAS_KGSL_TRACE_DIR", d.path, true)
+            }
             val up = upscaler(ctx)
             Os.setenv("LAS_SGSR", if (up == 1) "1" else if (up == 3) "2" else if (up == 4) "4" else if (up == 5) "5" else if (up == 6) "6" else "0", true)
             Os.setenv("LAS_FSR", if (up == 2) "1" else "0", true)

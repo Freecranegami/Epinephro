@@ -469,6 +469,13 @@ class MainActivity : Activity() {
                    else "Depth buffer diagnostic OFF. Applies the next time the game starts."
     }
 
+    private fun toggleKgslTrace(out: TextView) {
+        val on = !Tweaks.kgslTrace(this)
+        Tweaks.setKgslTrace(this, on)
+        out.text = if (on) "GPU command trace ON (needs Light mode OFF). Play the same scene for about 2 minutes with the driver you want to record, then send the files in Android/data/<this app>/files/kgsltrace (trace.txt and submit_*.kgt). Run it once with Turnip and once with the stock driver to compare. It only observes. Applies the next time the game starts."
+                   else "GPU command trace OFF. Applies the next time the game starts."
+    }
+
     private fun chooseResolution(out: TextView) {
         val (sw, sh) = Tweaks.screenSize(this)
         val pcts = intArrayOf(100, 90, 80, 75, 66, 50)
@@ -1064,6 +1071,7 @@ class MainActivity : Activity() {
         toggle(b, "Focus guard", "Keeps the game running when the notification shade opens", { FocusGuard.enabled(this) }) { toggleFocusGuard(outView) }
         toggle(b, "Light mode", "No diagnostics, best performance. Turn it OFF to record a Guest log for a bug report", { Tweaks.light(this) }) { toggleLight(outView) }
         toggle(b, "Depth buffer diagnostic", "Logs whether screen-space effects could use this game's depth. Play 2 minutes, then send the Guest log", { Tweaks.depthDiag(this) }) { toggleDepthDiag(outView) }
+        toggle(b, "GPU command trace (experimental)", "Records what the GPU driver asks the kernel to do, to compare Turnip with the Qualcomm driver. Needs Light mode OFF", { Tweaks.kgslTrace(this) }) { toggleKgslTrace(outView) }
     }
 
     private fun addDriver(b: LinearLayout) {
