@@ -20,6 +20,9 @@ static void *open_vk(const char *tmp, const char *hook, const char *dir,
     return g_custom;
 }
 
+/* the same opener, for bench.c (the upscaler cost test) */
+void *vkshim_bench_open(const char *tmp, const char *hook, const char *dir, const char *name, int custom) { return open_vk(tmp, hook, dir, name, custom); }
+
 /* ---------- simple probe: instance + device name ---------- */
 
 static void probe_run(char *out, size_t n, void *vk) {

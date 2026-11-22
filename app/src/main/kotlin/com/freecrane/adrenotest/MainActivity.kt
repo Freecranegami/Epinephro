@@ -60,6 +60,7 @@ object Native {
 object Guest {
     fun load() { System.loadLibrary("guesttest") }
     external fun vulkanInfo(): String
+    external fun bench(tmpDir: String, hookDir: String, driverDir: String, driverName: String, custom: Boolean, inW: Int, inH: Int, outW: Int, outH: Int): String
 }
 
 class MainActivity : Activity() {
@@ -486,6 +487,37 @@ class MainActivity : Activity() {
         Tweaks.setHdr(this, on)
         out.text = if (on) "HDR10 output ON (screen peak ${if (screen > 0) "$screen nits" else "not reported, 600 assumed"}). The game's picture is expanded to HDR10: highlights get brighter, colours use the wide gamut. It works on any game but is a guess, not the game's own HDR. It adds one full-screen pass. The Guest log says `hdr: on` or why not (Light mode OFF to see it). Applies the next time the game starts."
                    else "HDR10 output OFF. Applies the next time the game starts."
+    }
+
+    // GPU time of each upscaler's shader, measured in the app with the system or the selected custom driver, no game
+    private fun benchUpscalers() {
+        if (busy) { outView.text = "Busy, wait for the current task to finish"; return }
+        MaterialAlertDialogBuilder(this).setTitle("Test with which driver?")
+            .setItems(arrayOf("System driver", "Custom driver (the selected one)")) { _, d ->
+                val custom = d == 1
+                val pcts = intArrayOf(77, 67, 59, 50)
+                val labels = arrayOf("Ultra Quality (game at 77 % of the screen)", "Quality (67 %)", "Balanced (59 %)", "Performance (50 %)")
+                MaterialAlertDialogBuilder(this).setTitle("Game resolution")
+                    .setItems(labels) { _, r -> runBench(custom, pcts[r]) }.setNegativeButton("Cancel", null).show()
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun runBench(custom: Boolean, pct: Int) {
+        val dm = resources.displayMetrics
+        val ow = maxOf(dm.widthPixels, dm.heightPixels); val oh = minOf(dm.widthPixels, dm.heightPixels)
+        val iw = (ow * pct / 100) and 1.inv(); val ih = (oh * pct / 100) and 1.inv()
+        val p = Util.paths(this, custom)
+        if (custom) customOpened = true
+        busy = true
+        outView.text = "Measuring the upscalers at ${iw}x${ih} to ${ow}x${oh}. This takes a few seconds, keep the app open."
+        Thread {
+            val r = try { Native.bench(p[0], p[1], p[2], p[3], custom, iw, ih, ow, oh) } catch (t: Throwable) { "The test failed: $t" }
+            runOnUiThread {
+                busy = false
+                outView.text = r
+                MaterialAlertDialogBuilder(this).setTitle("Upscaler GPU cost (" + (if (custom) "custom driver" else "system driver") + ")").setMessage(r).setPositiveButton("Close", null).show()
+            }
+        }.start()
     }
 
     private fun choosePerfMode() {
@@ -922,6 +954,7 @@ class MainActivity : Activity() {
         val rw = Tweaks.resW(this); val rh = Tweaks.resH(this)
         action(b, "Resolution", if (rw > 0 && rh > 0) "$rw x $rh" else "Native") { chooseResolution(outView) }
         action(b, "Upscaler (SGSR / FSR)", Tweaks.upscalers[Tweaks.upscaler(this)].substringBefore(" (")) { chooseUpscaler(outView) }
+        if (Prefs.scope == null) action(b, "Test upscaler GPU cost", "Times every upscaler on this phone's GPU, no game needed") { benchUpscalers() }
         action(b, "EGSR look", "Natural, Crisp (FSR 1 sharpness) or Punchy") { chooseEpiSr2Look(outView) }
         action(b, "EGSR tuning", "boost, limit, edge, compare split") { chooseEpiSr2(outView) }
         action(b, "Variable-rate shading (experimental)", Tweaks.vrsModes[Tweaks.vrs(this)]) { chooseVrs() }
