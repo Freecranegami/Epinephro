@@ -489,10 +489,11 @@ class MainActivity : Activity() {
     }
 
     private fun choosePerfMode() {
-        MaterialAlertDialogBuilder(this).setTitle("Overlay detail")
-            .setSingleChoiceItems(PerfOverlay.modes.toTypedArray(), PerfOverlay.mode(this)) { d, which ->
-                PerfOverlay.setMode(this, which); d.dismiss(); refreshPage()
-                outView.text = "Overlay detail: ${PerfOverlay.modes[which].substringBefore(" (")}. GPU load, GPU temperature and the per-core clocks are only shown when the phone lets apps read them; otherwise they say n/a. Applies the next time the game starts."
+        val names = PerfOverlay.sizes.map { it.second }.toTypedArray()
+        MaterialAlertDialogBuilder(this).setTitle("Overlay size")
+            .setSingleChoiceItems(names, PerfOverlay.sizes.indexOfFirst { it.first == PerfOverlay.size(this) }.coerceAtLeast(0)) { d, which ->
+                PerfOverlay.setSize(this, PerfOverlay.sizes[which].first); d.dismiss(); refreshPage()
+                outView.text = "Overlay size: ${names[which]}. In the game, tap the card to cycle Full, Tiles, Pill, Minimal and Mega, drag it to move it, and long-press it to lock its place. Values the phone doesn't let apps read are left out. Applies the next time the game starts."
             }.setNegativeButton("Cancel", null).show()
     }
 
@@ -1130,14 +1131,18 @@ class MainActivity : Activity() {
             { Tweaks.sustained(this) }) { Tweaks.setSustained(this, !Tweaks.sustained(this)); refreshPage() }
         toggle(b, "FSR half precision", "Runs the FSR upscale in 16-bit maths, which is faster on Adreno GPUs. Turn it off if the picture shows odd colours or noise. Applies the next time the game starts.",
             { Tweaks.fsrHalf(this) }) { Tweaks.setFsrHalf(this, !Tweaks.fsrHalf(this)); outView.text = "FSR half precision ${if (Tweaks.fsrHalf(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
-        toggle(b, "Performance overlay", "A small card you can drag around the screen: frames per second, CPU temperature and battery (level and power use). Light: one update a second.",
+        toggle(b, "Performance overlay", "FusionHUD: FPS with a frame-time graph and 1% / 0.01% lows, GPU and CPU load and temperature, memory, battery and power. Tap to change its size, drag to move, long-press to lock.",
             { PerfOverlay.enabled(this) }) { PerfOverlay.setEnabled(this, !PerfOverlay.enabled(this)); outView.text = "Performance overlay ${if (PerfOverlay.enabled(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
-        action(b, "Overlay detail", PerfOverlay.modes[PerfOverlay.mode(this)].substringBefore(" (")) { choosePerfMode() }
+        action(b, "Overlay size", PerfOverlay.sizes.firstOrNull { it.first == PerfOverlay.size(this) }?.second ?: "Pill") { choosePerfMode() }
         addCaches(b)
     }
 
     // Cache manager: what the saved pipeline caches take, and a way to delete them.
     private fun addCaches(b: LinearLayout) {
+        header(b, "Credits")
+        action(b, "FusionHUD by The412Banner", "The performance overlay. GPL-3.0 with an additional attribution term. github.com/The412Banner/FusionHUD") {
+            try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/The412Banner/FusionHUD"))) } catch (_: Throwable) { }
+        }
         header(b, "Cache")
         val scope = Prefs.scope
         if (scope != null) {

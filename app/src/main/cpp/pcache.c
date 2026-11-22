@@ -218,7 +218,13 @@ static void ctr_init(void) {
 /* ---- a little more priority for the thread that presents frames (once per thread) ---- */
 void vkshim_perf_present(void) {
     if (g_ctr_state != 2) ctr_init();
-    if (g_ctr) __atomic_add_fetch(g_ctr, 1, __ATOMIC_RELAXED);
+    if (g_ctr) {
+        /* the count, plus the time of each present (ms since boot) in a ring of 500 after a 64-byte header, for the overlay's frame times */
+        uint64_t n = __atomic_load_n(g_ctr, __ATOMIC_RELAXED);
+        struct timespec ts; clock_gettime(CLOCK_BOOTTIME, &ts);
+        g_ctr[8 + (n % 500)] = (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
+        __atomic_add_fetch(g_ctr, 1, __ATOMIC_RELEASE);
+    }
     static __thread int done;
     if (done) return;
     done = 1;

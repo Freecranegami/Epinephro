@@ -60,4 +60,7 @@ android {
 dependencies {
     // Material 3 for the screens of the app (the games never see it: they load from their own class loader)
     implementation("com.google.android.material:material:1.12.0")
+    // FusionHUD (the performance overlay) needs these
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
