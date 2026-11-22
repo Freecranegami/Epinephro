@@ -41,6 +41,7 @@ object Native {
     ): String
 
     external fun bindShim(): String
+    external fun bench(tmpDir: String, hookDir: String, driverDir: String, driverName: String, custom: Boolean, inW: Int, inH: Int, outW: Int, outH: Int): String
     external fun threadProbe(names: String)
     external fun installFindClassHook(loader: ClassLoader): String
     external fun snapshot(tag: String)
@@ -60,7 +61,6 @@ object Native {
 object Guest {
     fun load() { System.loadLibrary("guesttest") }
     external fun vulkanInfo(): String
-    external fun bench(tmpDir: String, hookDir: String, driverDir: String, driverName: String, custom: Boolean, inW: Int, inH: Int, outW: Int, outH: Int): String
 }
 
 class MainActivity : Activity() {
