@@ -26,10 +26,21 @@ object GuestPm {
     // letting Play answer a package it does not know with an error the game cannot handle.
     fun blocksPlay(intent: android.content.Intent?): Boolean {
         val pkg = intent?.component?.packageName ?: intent?.`package`
-        val blocked = pkg == "com.android.vending" && GuestRuntime.current != null
-        if (blocked) Log.i(TAG, "bindService to the Play Store refused: " + (intent?.action ?: intent?.component))
+        val blocked = (pkg == "com.android.vending" || (isGoogle(pkg, intent?.action) && stubsOn())) && GuestRuntime.current != null
+        if (blocked) Log.i(TAG, "connection to Google services refused (the game sees them as not installed): " + (intent?.action ?: intent?.component))
         return blocked
     }
+
+    // Google Play Services, the Play Store and friends. The game is not signed in as itself there, so a real one
+    // on this phone would answer with errors the game cannot handle; the game is told they are not installed, which
+    // every game must already handle (phones without Google services, sideloaded copies).
+    private val googlePkgs = setOf("com.google.android.gms", "com.android.vending", "com.google.android.gsf",
+        "com.google.android.play.games", "com.google.android.finsky", "com.google.android.apps.play.games")
+    fun isGoogle(pkg: String?, action: String? = null): Boolean =
+        (pkg != null && (pkg in googlePkgs || pkg.startsWith("com.google.android.gms."))) ||
+        (action != null && (action.startsWith("com.google.android.gms.") || action.startsWith("com.android.vending.") ||
+            action.startsWith("com.google.android.gsf.")))
+    fun stubsOn(): Boolean = try { Tweaks.stubs(HostApp.instance) } catch (t: Throwable) { true }
 
     @Volatile
     private var logged = 0
@@ -119,6 +130,15 @@ object GuestPm {
                     (GuestRuntime.nativeValue(g.apk.parentFile!!, "activity") ?: cn.className) else cn.className
                 val ai = activityInfo(target)
                 if (ai != null) { note(m, a, "-> $target from the game's APK (meta-data ${ai.metaData?.size() ?: 0})"); return ai }
+            }
+            // Questions about Google's packages: not installed.
+            if (a.any { it is String && isGoogle(it) } && stubsOn()) {
+                when (m.name) {
+                    "getPackageInfo", "getApplicationInfo", "getActivityInfo", "getServiceInfo", "getReceiverInfo", "getProviderInfo",
+                    "getPackageInfoVersioned" -> { note(m, a, "-> Google package: not installed"); return null }
+                    "getPackageUid" -> { note(m, a, "-> Google package: not installed"); return -1 }
+                    "getInstallerPackageName" -> { return null }
+                }
             }
             if (mine) {
                 when (m.name) {

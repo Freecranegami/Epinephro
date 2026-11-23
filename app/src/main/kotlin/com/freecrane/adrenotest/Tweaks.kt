@@ -149,6 +149,9 @@ object Tweaks {
     fun vrs(ctx: Context): Int = Prefs.get(ctx).getInt("vrs_mode", 0).coerceIn(0, 2)
     fun setVrs(ctx: Context, v: Int) { Prefs.get(ctx).edit().putInt("vrs_mode", v).commit() }
     val paceFps = intArrayOf(0, 24, 30, 40, 45, 48, 60, 72, 90, 120)
+    // Stubs for Google services and the game's startup providers (on by default; turn off if a game behaves worse with them)
+    fun stubs(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("gstubs", true)
+    fun setStubs(ctx: Context, v: Boolean) { Prefs.get(ctx).edit().putBoolean("gstubs", v).commit() }
     fun pace(ctx: Context): Int = Prefs.get(ctx).getInt("pace_fps", 0)
     fun setPace(ctx: Context, v: Int) { Prefs.get(ctx).edit().putInt("pace_fps", v).commit() }
     fun casPercent(ctx: Context): Int = Prefs.get(ctx).getInt("cas_pct", 40).coerceIn(0, 100)

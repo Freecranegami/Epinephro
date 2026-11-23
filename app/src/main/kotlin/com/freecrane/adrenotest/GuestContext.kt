@@ -52,6 +52,18 @@ class GuestContext(base: Context, private val g: GuestRuntime.Guest) : ContextWr
         return super.bindService(service, flags, executor, conn)
     }
 
+    // Google services are "not installed" (see GuestPm.blocksPlay): no starting them either.
+    override fun startService(service: android.content.Intent): android.content.ComponentName? =
+        if (GuestPm.blocksPlay(service)) null else super.startService(service)
+    override fun startActivity(intent: android.content.Intent) {
+        if (GuestPm.blocksPlay(intent)) return
+        super.startActivity(intent)
+    }
+    override fun startActivity(intent: android.content.Intent, options: android.os.Bundle?) {
+        if (GuestPm.blocksPlay(intent)) return
+        super.startActivity(intent, options)
+    }
+
     // Some system services identify the caller by the package name of the context they were made
     // for. The game mode service refuses a package that is not installed, so hand out this app's own.
     override fun getSystemService(name: String): Any? {

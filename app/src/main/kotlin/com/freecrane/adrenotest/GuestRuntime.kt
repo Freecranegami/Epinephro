@@ -171,8 +171,36 @@ object GuestRuntime {
 
         val g = Guest(pkg, id, apk, ai, res, loader, File(root, "obb").apply { mkdirs() })
         current = g
+        startProviders(app, g)
         startGameApplication(app, g)
         return g
+    }
+
+    // Android creates every ContentProvider in the manifest before the Application starts. Many libraries start themselves
+    // that way (Firebase, androidx.startup, ad and analytics SDKs, lifecycle). Nothing does that for an imported game, so a
+    // game calling into them finds them uninitialised and crashes. Create the game's own providers here, in the same
+    // order Android would (highest initOrder first); one that fails is skipped and logged.
+    private fun startProviders(host: Context, g: Guest) {
+        if (!Tweaks.stubs(host)) { Log.i(TAG, "startup providers: off"); return }
+        try {
+            val pi = host.packageManager.getPackageArchiveInfo(g.apk.path, PackageManager.GET_PROVIDERS or PackageManager.GET_META_DATA)
+            val list = (pi?.providers ?: emptyArray()).filter {
+                (it.processName == null || it.processName == g.pkg) && !it.name.startsWith("com.freecrane.adrenotest")
+            }.sortedByDescending { it.initOrder }
+            var ok = 0
+            for (p in list) {
+                try {
+                    p.applicationInfo = g.ai
+                    val cp = g.loader.loadClass(p.name).getDeclaredConstructor().newInstance() as android.content.ContentProvider
+                    cp.attachInfo(GuestContext(host, g), p)
+                    ok++
+                    Log.i(TAG, "startup provider ${p.name}: started")
+                } catch (t: Throwable) {
+                    Log.w(TAG, "startup provider ${p.name}: skipped (${(t.cause ?: t).javaClass.simpleName}: ${(t.cause ?: t).message})")
+                }
+            }
+            Log.i(TAG, "startup providers: $ok of ${list.size} started")
+        } catch (t: Throwable) { Log.w(TAG, "startup providers failed: $t") }
     }
 
     // Android starts the app's Application before any of its activities. Games keep
