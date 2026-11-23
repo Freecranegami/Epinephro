@@ -195,6 +195,7 @@ object GuestRuntime {
 
         val g = Guest(pkg, id, apk, ai, res, loader, File(root, "obb").apply { mkdirs() })
         current = g
+        setProcessName(g)
         startProviders(app, g)
         startGameApplication(app, g)
         return g
@@ -204,6 +205,18 @@ object GuestRuntime {
     // that way (Firebase, androidx.startup, ad and analytics SDKs, lifecycle). Nothing does that for an imported game, so a
     // game calling into them finds them uninitialised and crashes. Create the game's own providers here, in the same
     // order Android would (highest initOrder first); one that fails is skipped and logged.
+    // Libraries decide whether they are in the main process by comparing the process name with the package name
+    // (Application.getProcessName / ActivityThread.currentProcessName); in the game process that name is ours
+    // (":guest"), so Firebase, ad, analytics and login SDKs would think they run in a side process and skip their set-up.
+    private fun setProcessName(g: Guest) {
+        try {
+            val at = Class.forName("android.app.ActivityThread").getMethod("currentActivityThread").invoke(null)
+            val bd = at.javaClass.getDeclaredField("mBoundApplication").apply { isAccessible = true }.get(at)
+            bd.javaClass.getDeclaredField("processName").apply { isAccessible = true }.set(bd, g.pkg)
+            Log.i(TAG, "process name for the game: ${g.pkg} (Application.getProcessName: ${Application.getProcessName()})")
+        } catch (t: Throwable) { Log.w(TAG, "process name: $t") }
+    }
+
     private fun registerProvider(c: Context, p: android.content.pm.ProviderInfo): Boolean {
         return try {
             val at = Class.forName("android.app.ActivityThread").getMethod("currentActivityThread").invoke(null)
