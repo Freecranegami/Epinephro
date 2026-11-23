@@ -131,7 +131,7 @@ object Tweaks {
 
     // Upscaler: the game renders smaller than the screen (the Resolution set here, or the game's own resolution option)
     // and the picture is upscaled to the screen: 0 = off, 1 = Snapdragon Game Super Resolution 1, 2 = AMD FSR 1 (EASU + RCAS), 3 = SGSR Quality (SGSR 1 edge-direction variant).
-    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "MWSR (MoonlightWeb Super Resolution)", "EGSR (Epinephro Game Super Resolution)", "FSR-1P (FSR 1 in one pass, for Adreno)", "EGSR-CAS (EGSR with AMD CAS sharpening)")
+    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "MWSR (MoonlightWeb Super Resolution)", "EGSR (Epinephro Game Super Resolution)", "FSR Lite (FSR 1 in one pass, same picture)", "EGSR-CAS (EGSR with AMD CAS sharpening)")
     fun upscaler(ctx: Context): Int {
         val p = Prefs.get(ctx)
         var v = p.getInt("upscaler", if (p.getBoolean("sgsr", false)) 1 else 0)

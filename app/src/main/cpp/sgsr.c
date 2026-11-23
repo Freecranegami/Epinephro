@@ -25,7 +25,7 @@
 #include "mwsr_spv.h"
 #include "egsr_spv.h"
 #include "egsr_cas_spv.h"
-#include "fsr1p_spv.h"
+#include "fsr_lite_spv.h"
 #include "hdr_spv.h"
 #include "fxaa_spv.h"
 #include "fsr_spv.h"
@@ -788,8 +788,8 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         smi.codeSize = sizeof sgsr_vs_spv; smi.pCode = sgsr_vs_spv;
         ST("create vertex shader", F.CreateShaderModule(d, &smi, NULL, &c->vs));
         { const char *sq = getenv("LAS_SGSR"); int q = sq && *sq == '2'; c->mw = sq && *sq == '4'; c->e2 = sq && (*sq == '5' || *sq == '7'); c->ec = sq && *sq == '7'; c->fp = sq && *sq == '6';        /* SGSR Quality: the edge-direction shader, same inputs */
-          smi.codeSize = c->fp ? sizeof fsr1p_fs_spv : c->ec ? sizeof egsr_cas_fs_spv : c->e2 ? sizeof egsr_fs_spv : c->mw ? sizeof mwsr_fs_spv : q ? sizeof sgsrq_fs_spv : sizeof sgsr_fs_spv; smi.pCode = c->fp ? fsr1p_fs_spv : c->ec ? egsr_cas_fs_spv : c->e2 ? egsr_fs_spv : c->mw ? mwsr_fs_spv : q ? sgsrq_fs_spv : sgsr_fs_spv;
-          LOGI("sgsr: SGSR 1 %s shader", c->fp ? "FSR-1P (one-pass EASU+RCAS)" : q ? "Quality (edge direction)" : "standard"); }
+          smi.codeSize = c->fp ? sizeof fsr_lite_fs_spv : c->ec ? sizeof egsr_cas_fs_spv : c->e2 ? sizeof egsr_fs_spv : c->mw ? sizeof mwsr_fs_spv : q ? sizeof sgsrq_fs_spv : sizeof sgsr_fs_spv; smi.pCode = c->fp ? fsr_lite_fs_spv : c->ec ? egsr_cas_fs_spv : c->e2 ? egsr_fs_spv : c->mw ? mwsr_fs_spv : q ? sgsrq_fs_spv : sgsr_fs_spv;
+          LOGI("sgsr: SGSR 1 %s shader", c->fp ? "FSR Lite (one-pass EASU+RCAS, same picture as FSR 1)" : q ? "Quality (edge direction)" : "standard"); }
         ST("create fragment shader", F.CreateShaderModule(d, &smi, NULL, &c->fs));
         ST("create pipeline", mk_pipe(c, c->vs, c->fs, c->rp, c->rect, &c->pipe));
     }
@@ -864,6 +864,10 @@ static int build(Sg *c, VkImageUsageFlags gameUsage) {
         memcpy(c->easu, e, sizeof c->easu);                    /* the shader reads the raw bits of these floats */
         float sh = exp2f(-c->rcas);
         memcpy(&c->rcasc[0], &sh, 4);
+        if (c->fp) {                                           /* FSR Lite: rect bounds (first and last pixel) for its border clamp */
+            float lim[4] = { ox, oy, ox + ow - 1.0f, oy + oh - 1.0f };
+            memcpy(&c->easu[14], &lim[0], 4); memcpy(&c->easu[15], &lim[1], 4); memcpy(&c->rcasc[1], &lim[2], 4); memcpy(&c->rcasc[2], &lim[3], 4);
+        }
     }
     for (uint32_t i = 0; i < n; i++) {
         VkCommandBufferBeginInfo bi = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
