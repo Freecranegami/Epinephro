@@ -32,6 +32,30 @@ object GuestRuntime {
         var app: Application? = null
     }
 
+    // The proxy activities (see GuestProxies.kt): one per screen orientation kind. The game's own manifest picks.
+    fun isProxy(name: String): Boolean = name == GuestProxyActivity::class.java.name ||
+        name == GuestProxyPortrait::class.java.name || name == GuestProxySensor::class.java.name
+
+    private val orient = HashMap<String, Map<String, Int>>()
+    fun proxyFor(host: Context, apk: File, activity: String): Class<*> {
+        val map = synchronized(orient) {
+            orient.getOrPut(apk.path) {
+                try {
+                    val pi = host.packageManager.getPackageArchiveInfo(apk.path, PackageManager.GET_ACTIVITIES)
+                    (pi?.activities ?: emptyArray()).associate { it.name to it.screenOrientation }
+                } catch (t: Throwable) { emptyMap() }
+            }
+        }
+        val o = map[activity] ?: -1
+        val cls: Class<*> = when (o) {
+            1, 7, 9, 12 -> GuestProxyPortrait::class.java              // portrait, sensorPortrait, reversePortrait, userPortrait
+            2, 4, 10, 13 -> GuestProxySensor::class.java               // user, sensor, fullSensor, fullUser
+            else -> GuestProxyActivity::class.java                     // landscape kinds, unspecified: as before
+        }
+        Log.i(TAG, "proxy for $activity (orientation $o): ${cls.simpleName}")
+        return cls
+    }
+
     @Volatile
     var splitNames: Array<String> = emptyArray()
 

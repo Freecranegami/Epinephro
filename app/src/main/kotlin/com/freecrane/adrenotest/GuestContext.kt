@@ -33,6 +33,44 @@ class GuestContext(base: Context, private val g: GuestRuntime.Guest) : ContextWr
         return pm
     }
 
+    // The game's own folders, where a real install would have them: files, cache, databases, preferences and the
+    // external folders (which are the ones the native file hooks map Android/data/<package> to). Off = this app's own.
+    private fun own(): Boolean = Tweaks.gpaths(HostApp.instance)
+    private fun sub(n: String): java.io.File = java.io.File(g.ai.dataDir, n).also { it.mkdirs() }
+    private fun ext(n: String): java.io.File = java.io.File(HostApp.instance.filesDir, "guests/${g.id}/ext/$n").also { it.mkdirs() }
+    override fun getDataDir(): java.io.File = if (own()) java.io.File(g.ai.dataDir).also { it.mkdirs() } else super.getDataDir()
+    override fun getFilesDir(): java.io.File = if (own()) sub("files") else super.getFilesDir()
+    override fun getNoBackupFilesDir(): java.io.File = if (own()) sub("no_backup") else super.getNoBackupFilesDir()
+    override fun getCacheDir(): java.io.File = if (own()) sub("cache") else super.getCacheDir()
+    override fun getCodeCacheDir(): java.io.File = if (own()) sub("code_cache") else super.getCodeCacheDir()
+    override fun getDir(name: String?, mode: Int): java.io.File = if (own()) sub("app_$name") else super.getDir(name, mode)
+    override fun getDatabasePath(name: String): java.io.File =
+        if (!own()) super.getDatabasePath(name) else if (name.startsWith("/")) java.io.File(name) else java.io.File(sub("databases"), name)
+    override fun databaseList(): Array<String> = if (own()) (sub("databases").list() ?: emptyArray()) else super.databaseList()
+    override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?): android.database.sqlite.SQLiteDatabase =
+        if (own()) openOrCreateDatabase(name, mode, factory, null) else super.openOrCreateDatabase(name, mode, factory)
+    override fun openOrCreateDatabase(name: String, mode: Int, factory: android.database.sqlite.SQLiteDatabase.CursorFactory?,
+                                      errorHandler: android.database.DatabaseErrorHandler?): android.database.sqlite.SQLiteDatabase {
+        if (!own()) return super.openOrCreateDatabase(name, mode, factory, errorHandler)
+        var flags = android.database.sqlite.SQLiteDatabase.CREATE_IF_NECESSARY
+        if (mode and Context.MODE_ENABLE_WRITE_AHEAD_LOGGING != 0) flags = flags or android.database.sqlite.SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING
+        return android.database.sqlite.SQLiteDatabase.openDatabase(getDatabasePath(name).path, factory, flags, errorHandler)
+    }
+    override fun deleteDatabase(name: String): Boolean =
+        if (own()) android.database.sqlite.SQLiteDatabase.deleteDatabase(getDatabasePath(name)) else super.deleteDatabase(name)
+    private fun prefName(n: String?) = "g_${g.id}_${n ?: "null"}"
+    override fun getSharedPreferences(name: String?, mode: Int): android.content.SharedPreferences =
+        if (own()) super.getSharedPreferences(prefName(name), mode) else super.getSharedPreferences(name, mode)
+    override fun deleteSharedPreferences(name: String): Boolean =
+        if (own()) super.deleteSharedPreferences(prefName(name)) else super.deleteSharedPreferences(name)
+    override fun getExternalFilesDir(type: String?): java.io.File? =
+        if (own()) ext(if (type == null) "data/files" else "data/files/$type") else super.getExternalFilesDir(type)
+    override fun getExternalFilesDirs(type: String?): Array<java.io.File> =
+        if (own()) arrayOf(getExternalFilesDir(type)!!) else super.getExternalFilesDirs(type)
+    override fun getExternalCacheDir(): java.io.File? = if (own()) ext("data/cache") else super.getExternalCacheDir()
+    override fun getExternalCacheDirs(): Array<java.io.File> = if (own()) arrayOf(getExternalCacheDir()!!) else super.getExternalCacheDirs()
+    override fun getExternalMediaDirs(): Array<java.io.File> = if (own()) arrayOf(ext("media")) else super.getExternalMediaDirs()
+
     // The game's data lives in this app's own folders, so its storage permission checks are answered "granted".
     private fun storagePerm(p: String?) = p == "android.permission.READ_EXTERNAL_STORAGE" ||
         p == "android.permission.WRITE_EXTERNAL_STORAGE" || p == "android.permission.MANAGE_EXTERNAL_STORAGE"
@@ -41,20 +79,35 @@ class GuestContext(base: Context, private val g: GuestRuntime.Guest) : ContextWr
     override fun checkSelfPermission(permission: String): Int =
         if (storagePerm(permission)) PackageManager.PERMISSION_GRANTED else super.checkSelfPermission(permission)
 
+    // The game's own services run through stub services (GuestProxies.kt).
     override fun bindService(service: android.content.Intent, conn: android.content.ServiceConnection, flags: Int): Boolean {
+        GuestServices.route(g, service)?.let { return super.bindService(it, conn, flags) }
         if (GuestPm.blocksPlay(service)) return false
         return super.bindService(service, conn, flags)
     }
 
     override fun bindService(service: android.content.Intent, flags: Int, executor: java.util.concurrent.Executor,
                              conn: android.content.ServiceConnection): Boolean {
+        GuestServices.route(g, service)?.let { return super.bindService(it, flags, executor, conn) }
         if (GuestPm.blocksPlay(service)) return false
         return super.bindService(service, flags, executor, conn)
     }
 
+    override fun startForegroundService(service: android.content.Intent): android.content.ComponentName? {
+        GuestServices.route(g, service)?.let { super.startForegroundService(it); return GuestServices.nameOf(g, service) }
+        return if (GuestPm.blocksPlay(service)) null else super.startForegroundService(service)
+    }
+
+    override fun stopService(name: android.content.Intent): Boolean {
+        GuestServices.route(g, name)?.let { return super.stopService(it) }
+        return super.stopService(name)
+    }
+
     // Google services are "not installed" (see GuestPm.blocksPlay): no starting them either.
-    override fun startService(service: android.content.Intent): android.content.ComponentName? =
-        if (GuestPm.blocksPlay(service)) null else super.startService(service)
+    override fun startService(service: android.content.Intent): android.content.ComponentName? {
+        GuestServices.route(g, service)?.let { super.startService(it); return GuestServices.nameOf(g, service) }
+        return if (GuestPm.blocksPlay(service)) null else super.startService(service)
+    }
     override fun startActivity(intent: android.content.Intent) {
         if (GuestPm.blocksPlay(intent)) return
         super.startActivity(intent)

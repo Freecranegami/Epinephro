@@ -12,7 +12,7 @@ import java.lang.reflect.Modifier
 class GuestFactory : AppComponentFactory() {
 
     override fun instantiateActivity(cl: ClassLoader, className: String, intent: Intent?): Activity {
-        if (className == GuestProxyActivity::class.java.name && intent != null) {
+        if (GuestRuntime.isProxy(className) && intent != null) {
             val pkg = intent.getStringExtra(GuestRuntime.EXTRA_PKG)
             var target = intent.getStringExtra(GuestRuntime.EXTRA_ACTIVITY)
             if (pkg != null && target != null) {

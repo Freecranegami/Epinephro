@@ -152,6 +152,9 @@ object Tweaks {
     // Stubs for Google services and the game's startup providers (on by default; turn off if a game behaves worse with them)
     fun stubs(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("gstubs", true)
     fun setStubs(ctx: Context, v: Boolean) { Prefs.get(ctx).edit().putBoolean("gstubs", v).commit() }
+    // The game's own files, cache, databases, preferences and external folders (off = this app's folders, as before)
+    fun gpaths(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("gpaths", true)
+    fun setGpaths(ctx: Context, v: Boolean) { Prefs.get(ctx).edit().putBoolean("gpaths", v).commit() }
     fun pace(ctx: Context): Int = Prefs.get(ctx).getInt("pace_fps", 0)
     fun setPace(ctx: Context, v: Int) { Prefs.get(ctx).edit().putInt("pace_fps", v).commit() }
     fun casPercent(ctx: Context): Int = Prefs.get(ctx).getInt("cas_pct", 40).coerceIn(0, 100)

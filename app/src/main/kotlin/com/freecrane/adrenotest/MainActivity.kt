@@ -326,7 +326,7 @@ class MainActivity : Activity() {
         outView.text = "Starting $activity ..."
         Util.killGuestProcess(this)
         Handler(Looper.getMainLooper()).postDelayed({
-            val i = Intent(this, GuestProxyActivity::class.java)
+            val i = Intent(this, GuestRuntime.proxyFor(this, File(filesDir, "guests/$pkg/base.apk"), activity))
             i.putExtra(GuestRuntime.EXTRA_PKG, pkg)
             i.putExtra(GuestRuntime.EXTRA_ACTIVITY, activity)
             startActivity(i)
@@ -984,6 +984,8 @@ class MainActivity : Activity() {
         action(b, "RCAS sharpness (FSR 1, FSR Lite)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
         toggle(b, "Google service stubs + startup providers", "Tells the game Google Play Services and the Play Store are not installed, and starts the game's own startup libraries (Firebase, ads, analytics) the way Android would. Turn off if a game works worse with it.",
             { Tweaks.stubs(this) }) { Tweaks.setStubs(this, !Tweaks.stubs(this)); outView.text = "Google service stubs ${if (Tweaks.stubs(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
+        toggle(b, "Game's own storage folders", "Gives the game its own files, cache, databases and preferences like a real install, instead of sharing this app's. Saves a game kept in the shared folders before are not seen with this on; turn it off to get them back.",
+            { Tweaks.gpaths(this) }) { Tweaks.setGpaths(this, !Tweaks.gpaths(this)); outView.text = "Game storage folders ${if (Tweaks.gpaths(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
         toggle(b, "Ignore notch", "Draws the game under the camera cut-out, so it uses the whole screen. Parts of the game's picture at the edge can be hidden by the notch.",
             { Tweaks.ignoreNotch(this) }) { Tweaks.setIgnoreNotch(this, !Tweaks.ignoreNotch(this)); outView.text = "Ignore notch ${if (Tweaks.ignoreNotch(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
         toggle(b, "Stretch to fit", "Off keeps the picture's ratio with black bars", { Tweaks.stretch(this) }) { toggleStretch(outView) }

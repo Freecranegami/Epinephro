@@ -7,6 +7,29 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Permissions games commonly ask for at run time: a game's request is answered by Android for this app, so they must be declared here -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
 
     <application
         android:name=".HostApp"
@@ -50,6 +73,28 @@
             android:exported="false"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|locale" />
+        <activity
+            android:name=".GuestProxyPortrait"
+            android:process=":guest"
+            android:screenOrientation="sensorPortrait"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|locale" />
+        <activity
+            android:name=".GuestProxySensor"
+            android:process=":guest"
+            android:screenOrientation="fullSensor"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|locale" />
+        <service android:name=".GuestStubService0" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
+        <service android:name=".GuestStubService1" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
+        <service android:name=".GuestStubService2" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
+        <service android:name=".GuestStubService3" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
+        <service android:name=".GuestStubService4" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
+        <service android:name=".GuestStubService5" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
+        <service android:name=".GuestStubService6" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
+        <service android:name=".GuestStubService7" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
     <uses-library android:name="org.apache.http.legacy" android:required="false" />
         <!-- androidx start-up would run in the game process too; nothing here needs it -->
         <provider

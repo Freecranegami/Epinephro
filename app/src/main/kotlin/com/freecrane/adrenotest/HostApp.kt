@@ -48,12 +48,17 @@ class HostApp : Application() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (inGuestProcess()) Log.i("GuestHost", "lifecycle: onTrimMemory level=$level")
+        if (inGuestProcess()) { Log.i("GuestHost", "lifecycle: onTrimMemory level=$level"); try { GuestRuntime.current?.app?.onTrimMemory(level) } catch (t: Throwable) { } }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (inGuestProcess()) try { GuestRuntime.current?.app?.onConfigurationChanged(newConfig) } catch (t: Throwable) { }
     }
 
     override fun onLowMemory() {
         super.onLowMemory()
-        if (inGuestProcess()) Log.i("GuestHost", "lifecycle: onLowMemory")
+        if (inGuestProcess()) { Log.i("GuestHost", "lifecycle: onLowMemory"); try { GuestRuntime.current?.app?.onLowMemory() } catch (t: Throwable) { } }
     }
 
     override fun onCreate() {

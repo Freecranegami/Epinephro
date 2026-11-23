@@ -125,8 +125,8 @@ object GuestPm {
             // Launcher wrappers (fastman92 and similar) read their own activity's meta-data to find the real game activity.
             // The system only knows our proxy activity, so answer from the game's manifest.
             if (m.name == "getActivityInfo" && cn != null &&
-                (cn.packageName == g.pkg || cn.className == GuestProxyActivity::class.java.name)) {
-                val target = if (cn.className == GuestProxyActivity::class.java.name)
+                (cn.packageName == g.pkg || GuestRuntime.isProxy(cn.className))) {
+                val target = if (GuestRuntime.isProxy(cn.className))
                     (GuestRuntime.nativeValue(g.apk.parentFile!!, "activity") ?: cn.className) else cn.className
                 val ai = activityInfo(target)
                 if (ai != null) { note(m, a, "-> $target from the game's APK (meta-data ${ai.metaData?.size() ?: 0})"); return ai }
@@ -160,6 +160,22 @@ object GuestPm {
                     "getApplicationInfo" -> {
                         note(m, a, "-> from the game's APK")
                         return g.ai
+                    }
+                    // Installed from Google Play, as a store-bought copy would say.
+                    "getInstallerPackageName" -> if (stubsOn()) { note(m, a, "-> com.android.vending"); return "com.android.vending" }
+                    "getInstallSourceInfo" -> if (stubsOn()) {
+                        try {
+                            val c = Class.forName("android.content.pm.InstallSourceInfo")
+                            val ct = c.declaredConstructors.firstOrNull { it.parameterTypes.size >= 4 && it.parameterTypes[0] == String::class.java }
+                            if (ct != null) {
+                                val v = arrayOfNulls<Any?>(ct.parameterTypes.size)
+                                v[2] = null; v[3] = "com.android.vending"
+                                for (i in v.indices) if (ct.parameterTypes[i] == Int::class.javaPrimitiveType) v[i] = 0
+                                ct.isAccessible = true
+                                note(m, a, "-> installed by com.android.vending")
+                                return ct.newInstance(*v)
+                            }
+                        } catch (t: Throwable) { Log.w(TAG, "install source info failed: $t") }
                     }
                 }
             }
