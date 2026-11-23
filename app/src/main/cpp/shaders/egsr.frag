@@ -19,7 +19,7 @@ layout(push_constant) uniform PC {
 layout(location = 0) in highp vec2 uv;
 layout(location = 0) out vec4 out_Target0;
 
-precision mediump float;
+precision mediump float;   // all colour and weight maths in half precision; positions, uv and push-constant offsets are explicit highp
 
 // Catmull-Rom, r >= 0
 float cr(float r) {
@@ -28,27 +28,30 @@ float cr(float r) {
 }
 
 void main() {
+    // one conversion of the push constants into half precision; only positions and uv offsets stay highp
+    mediump vec4 q0 = pc.t0, q1 = pc.t1;
+    mediump float q2z = pc.t2.z, q2w = pc.t2.w;
     vec3 col = textureLod(ps0, uv, 0.0).xyz;
     vec3 bil = col;
-    if (pc.t1.y > 0.5 && uv.x < 0.5) { out_Target0 = vec4(col, 1.0); return; }
+    if (q1.y > 0.5 && uv.x < 0.5) { out_Target0 = vec4(col, 1.0); return; }
 
     highp vec2 imgCoord = (uv * pc.ViewportInfo.zw) + vec2(-0.5, 0.5);
     highp vec2 imgCoordPixel = floor(imgCoord);
     highp vec2 coord = imgCoordPixel * pc.ViewportInfo.xy;
     vec2 pl = imgCoord - imgCoordPixel;
     float a = 0.0;
-    if (pc.t2.w > 0.5) {   // native size: nothing to reconstruct, so the edge boost works as an unsharp mask against the four neighbouring texels
-        vec2 tx = pc.ViewportInfo.xy;
+    if (q2w > 0.5) {   // native size: nothing to reconstruct, so the edge boost works as an unsharp mask against the four neighbouring texels
+        highp vec2 tx = pc.ViewportInfo.xy;
         float gl = textureLod(ps0, uv - vec2(tx.x, 0.0), 0.0).y, gr = textureLod(ps0, uv + vec2(tx.x, 0.0), 0.0).y;
         float gu = textureLod(ps0, uv - vec2(0.0, tx.y), 0.0).y, gd = textureLod(ps0, uv + vec2(0.0, tx.y), 0.0).y;
         float hiN = max(max(max(gl, gr), max(gu, gd)), col.y), loN = min(min(min(gl, gr), min(gu, gd)), col.y);
         float rngN = hiN - loN;
-        float aN = clamp((rngN - pc.t0.z) / (2.0 * pc.t0.z), 0.0, 1.0);
+        float aN = clamp((rngN - q0.z) / (2.0 * q0.z), 0.0, 1.0);
         if (aN > 0.0) {
             float detN = col.y - 0.25 * (gl + gr + gu + gd);
-            float tgtN = col.y + 0.5 * pc.t0.x * aN * detN / (1.0 + abs(detN) / (pc.t0.y + 0.5 * rngN));
-            tgtN = clamp(tgtN, loN - pc.t0.w * rngN, hiN + pc.t0.w * rngN);
-            float dN = clamp(tgtN - col.y, -pc.t1.x, pc.t1.x);
+            float tgtN = col.y + 0.5 * q0.x * aN * detN / (1.0 + abs(detN) / (q0.y + 0.5 * rngN));
+            tgtN = clamp(tgtN, loN - q0.w * rngN, hiN + q0.w * rngN);
+            float dN = clamp(tgtN - col.y, -q1.x, q1.x);
             col = clamp(col + vec3(dN), 0.0, 1.0);
         }
         a = aN;
@@ -56,9 +59,9 @@ void main() {
     {
     vec4 left = textureGather(ps0, coord, 1);
 
-    highp float hi = max(max(left.y, left.z), col.y);
-    highp float lo = min(min(left.y, left.z), col.y);
-    highp float edge = pc.t0.z;
+    float hi = max(max(left.y, left.z), col.y);
+    float lo = min(min(left.y, left.z), col.y);
+    float edge = q0.z;
     a = clamp((hi - lo - edge) / (2.0 * edge), 0.0, 1.0);
     if (a > 0.0) {
         coord.x += pc.ViewportInfo.x;
@@ -86,26 +89,26 @@ void main() {
         float mx = max(max(left.y, left.z), max(right.x, right.w));
         float mn = min(min(left.y, left.z), min(right.x, right.w));
         float rng = mx - mn;
-        float tgt = rec + pc.t0.x * a * det / (1.0 + abs(det) / (pc.t0.y + 0.5 * rng));   // the soft limit and the margin scale with the local contrast
-        tgt = clamp(tgt, mn - pc.t0.w * rng, mx + pc.t0.w * rng);
-        float delta = clamp(tgt - col.y, -pc.t1.x, pc.t1.x);
+        float tgt = rec + q0.x * a * det / (1.0 + abs(det) / (q0.y + 0.5 * rng));   // the soft limit and the margin scale with the local contrast
+        tgt = clamp(tgt, mn - q0.w * rng, mx + q0.w * rng);
+        float delta = clamp(tgt - col.y, -q1.x, q1.x);
         col = clamp(col + vec3(delta), 0.0, 1.0);
     }
     }
     }
-    if (pc.t1.z > 0.0) {   // LumaSharpen-style texture sharpening, weaker the more the pixel is an edge
-        vec2 o = pc.t2.xy;
+    if (q1.z > 0.0) {   // LumaSharpen-style texture sharpening, weaker the more the pixel is an edge
+        highp vec2 o = pc.t2.xy;
         vec3 t0 = textureLod(ps0, uv + vec2(o.x, -o.y), 0.0).xyz, t1 = textureLod(ps0, uv + vec2(-o.x, o.y), 0.0).xyz;
         vec3 t2 = textureLod(ps0, uv - o, 0.0).xyz, t3 = textureLod(ps0, uv + o, 0.0).xyz;
         const vec3 LC = vec3(0.2126, 0.7152, 0.0722);
-        float sl = dot(bil - 0.25 * (t0 + t1 + t2 + t3), LC) * pc.t1.z;
+        float sl = dot(bil - 0.25 * (t0 + t1 + t2 + t3), LC) * q1.z;
         float k = 1.0;
-        if (pc.t2.z > 0.0) {   // noise floor: no sharpening where the four reads barely differ (sky, water, gradients, compression noise)
+        if (q2z > 0.0) {   // noise floor: no sharpening where the four reads barely differ (sky, water, gradients, compression noise)
             float l0 = dot(t0, LC), l1 = dot(t1, LC), l2 = dot(t2, LC), l3 = dot(t3, LC), lb = dot(bil, LC);
             float rg = max(max(max(l0, l1), max(l2, l3)), lb) - min(min(min(l0, l1), min(l2, l3)), lb);
-            k = smoothstep(0.0, pc.t2.z, rg);
+            k = smoothstep(0.0, q2z, rg);
         }
-        col = clamp(col + vec3(clamp(sl, -pc.t1.w, pc.t1.w) * k * (1.0 - a)), 0.0, 1.0);
+        col = clamp(col + vec3(clamp(sl, -q1.w, q1.w) * k * (1.0 - a)), 0.0, 1.0);
     }
     out_Target0 = vec4(col, 1.0);
 }
