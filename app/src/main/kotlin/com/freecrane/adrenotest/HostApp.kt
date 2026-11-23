@@ -36,12 +36,14 @@ class HostApp : Application() {
     }
 
     override fun bindService(service: android.content.Intent, conn: android.content.ServiceConnection, flags: Int): Boolean {
+        if (GuestLicense.bind(service, conn, GuestRuntime.current)) return true
         if (GuestPm.blocksPlay(service)) return false
         return super.bindService(service, conn, flags)
     }
 
     override fun bindService(service: android.content.Intent, flags: Int, executor: java.util.concurrent.Executor,
                              conn: android.content.ServiceConnection): Boolean {
+        if (GuestLicense.bind(service, conn, GuestRuntime.current)) return true
         if (GuestPm.blocksPlay(service)) return false
         return super.bindService(service, flags, executor, conn)
     }

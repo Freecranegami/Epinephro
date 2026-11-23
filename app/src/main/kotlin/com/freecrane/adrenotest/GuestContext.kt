@@ -82,6 +82,7 @@ class GuestContext(base: Context, private val g: GuestRuntime.Guest) : ContextWr
     // The game's own services run through stub services (GuestProxies.kt).
     override fun bindService(service: android.content.Intent, conn: android.content.ServiceConnection, flags: Int): Boolean {
         GuestServices.route(g, service)?.let { return super.bindService(it, conn, flags) }
+        if (GuestLicense.bind(service, conn, g)) return true
         if (GuestPm.blocksPlay(service)) return false
         return super.bindService(service, conn, flags)
     }
@@ -89,6 +90,7 @@ class GuestContext(base: Context, private val g: GuestRuntime.Guest) : ContextWr
     override fun bindService(service: android.content.Intent, flags: Int, executor: java.util.concurrent.Executor,
                              conn: android.content.ServiceConnection): Boolean {
         GuestServices.route(g, service)?.let { return super.bindService(it, flags, executor, conn) }
+        if (GuestLicense.bind(service, conn, g)) return true
         if (GuestPm.blocksPlay(service)) return false
         return super.bindService(service, flags, executor, conn)
     }
