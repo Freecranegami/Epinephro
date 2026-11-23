@@ -21,7 +21,6 @@
 #include "sgsr_spv.h"
 #include "sgsrq_spv.h"
 #include "fsr_spv.h"
-#include "fsr_lite_spv.h"
 #include "mwsr_spv.h"
 #include "egsr_spv.h"
 #include "egsr_cas_spv.h"
@@ -227,9 +226,6 @@ static void bench_run(char *out, size_t on, void *vk, int iw, int ih, int ow, in
     ADD("EGSR-CAS", sgsr_vs_spv, egsr_cas_fs_spv, 64, 0); memcpy(P[np_ - 1].push, ec, 64);
     float en[16]; memcpy(en, eg, 64); en[10] = 0.0f;
     ADD("EGSR, sharpening off", sgsr_vs_spv, egsr_fs_spv, 64, 0); memcpy(P[np_ - 1].push, en, 64);
-    uint32_t fp[20]; memcpy(fp, easu, 64); fp[16] = shb; fp[17] = fp[18] = fp[19] = 0;
-    { float l0 = 0.0f, lx = (float)ow - 1.0f, ly = (float)oh - 1.0f; memcpy(&fp[14], &l0, 4); memcpy(&fp[15], &l0, 4); memcpy(&fp[17], &lx, 4); memcpy(&fp[18], &ly, 4); }
-    ADD("FSR Lite (FSR 1 in one pass)", fsr_vs_spv, fsr_lite_fs_spv, 80, 0); memcpy(P[np_ - 1].push, fp, 80);   /* 7 */
     float hd[4] = { 200.0f, 600.0f, 0.5f, 0.0f };
     ADD("HDR10 pass (extra, any upscaler)", sgsr_vs_spv, hdr_fs_spv, 16, 1); memcpy(P[np_ - 1].push, hd, 16);   /* 8 */
 

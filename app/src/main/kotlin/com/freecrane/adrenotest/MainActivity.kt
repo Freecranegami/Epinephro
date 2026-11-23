@@ -981,7 +981,7 @@ class MainActivity : Activity() {
         action(b, "HDR highlight boost", if (Tweaks.hdrBoost(this) == 0) "Off" else "${Tweaks.hdrBoost(this)} %") { chooseHdrBoost() }
         action(b, "Frame pacing", if (Tweaks.pace(this) == 0) "Off" else "${Tweaks.pace(this)} fps, evenly spaced") { choosePace() }
         action(b, "CAS strength (EGSR-CAS)", "${Tweaks.casPercent(this)} %") { chooseCas(outView) }
-        action(b, "RCAS sharpness (FSR 1, FSR Lite)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
+        action(b, "RCAS sharpness (FSR 1)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
         toggle(b, "Google service stubs + startup providers", "Tells the game Google Play Services and the Play Store are not installed, and starts the game's own startup libraries (Firebase, ads, analytics) the way Android would. Turn off if a game works worse with it.",
             { Tweaks.stubs(this) }) { Tweaks.setStubs(this, !Tweaks.stubs(this)); outView.text = "Google service stubs ${if (Tweaks.stubs(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
         toggle(b, "Game's own storage folders", "Gives the game its own files, cache, databases and preferences like a real install, instead of sharing this app's. Saves a game kept in the shared folders before are not seen with this on; turn it off to get them back.",
