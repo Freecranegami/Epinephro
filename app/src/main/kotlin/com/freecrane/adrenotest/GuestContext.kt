@@ -132,6 +132,11 @@ class GuestContext(base: Context, private val g: GuestRuntime.Guest) : ContextWr
                 Log.w(TAG, "game mode service lookup failed: $t")
             }
         }
+        if (name == Context.JOB_SCHEDULER_SERVICE) {
+            val r = super.getSystemService(name)
+            if (r is android.app.job.JobScheduler) return GuestJobs.wrap(r, g)
+            return r
+        }
         return super.getSystemService(name)
     }
 

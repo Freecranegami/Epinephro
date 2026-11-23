@@ -40,6 +40,7 @@
         android:label="${appLabel}"
         android:extractNativeLibs="true"
         android:largeHeap="true"
+        android:usesCleartextTraffic="true"
         android:hardwareAccelerated="true">
 
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
@@ -95,6 +96,14 @@
         <service android:name=".GuestStubService5" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
         <service android:name=".GuestStubService6" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
         <service android:name=".GuestStubService7" android:process=":guest" android:exported="false" android:foregroundServiceType="dataSync|mediaPlayback" />
+        <service android:name=".GuestStubJob0" android:process=":guest" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".GuestStubJob1" android:process=":guest" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".GuestStubJob2" android:process=":guest" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".GuestStubJob3" android:process=":guest" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".GuestStubJob4" android:process=":guest" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".GuestStubJob5" android:process=":guest" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".GuestStubJob6" android:process=":guest" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
+        <service android:name=".GuestStubJob7" android:process=":guest" android:exported="false" android:permission="android.permission.BIND_JOB_SERVICE" />
     <uses-library android:name="org.apache.http.legacy" android:required="false" />
         <!-- androidx start-up would run in the game process too; nothing here needs it -->
         <provider

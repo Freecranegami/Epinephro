@@ -61,6 +61,21 @@ object GuestServices {
     }
 }
 
+// Creates the game's service object for a stub: same token, thread and class name as the stub, the game's context.
+internal fun makeGameService(stub: Service, target: String, g: GuestRuntime.Guest): Service {
+    val s = g.loader.loadClass(target).getDeclaredConstructor().newInstance() as Service
+    for (f in Service::class.java.declaredFields) {
+        if (Modifier.isStatic(f.modifiers)) continue
+        f.isAccessible = true
+        try { f.set(s, f.get(stub)) } catch (t: Throwable) { }
+    }
+    try { Service::class.java.getDeclaredField("mApplication").apply { isAccessible = true }.set(s, g.app ?: stub.application) } catch (t: Throwable) { }
+    val attach = android.content.ContextWrapper::class.java.getDeclaredMethod("attachBaseContext", Context::class.java)
+    attach.isAccessible = true
+    attach.invoke(s, GuestContext(stub.baseContext, g))
+    return s
+}
+
 open class GuestStubService : Service() {
     private var d: Service? = null
 
@@ -70,17 +85,7 @@ open class GuestStubService : Service() {
         val target = GuestServices.targetOf(javaClass.name)
         if (g == null || target == null) { Log.w("GuestHost", "stub service ${javaClass.simpleName} started with no game service"); stopSelf(); return }
         try {
-            val s = g.loader.loadClass(target).getDeclaredConstructor().newInstance() as Service
-            // the game's service is attached the way the system would have: same token, thread and class name as this stub
-            for (f in Service::class.java.declaredFields) {
-                if (Modifier.isStatic(f.modifiers)) continue
-                f.isAccessible = true
-                try { f.set(s, f.get(this)) } catch (t: Throwable) { }
-            }
-            try { Service::class.java.getDeclaredField("mApplication").apply { isAccessible = true }.set(s, g.app ?: application) } catch (t: Throwable) { }
-            val attach = android.content.ContextWrapper::class.java.getDeclaredMethod("attachBaseContext", Context::class.java)
-            attach.isAccessible = true
-            attach.invoke(s, GuestContext(baseContext, g))
+            val s = makeGameService(this, target, g)
             d = s
             s.onCreate()
             Log.i("GuestHost", "game service created: $target")
@@ -109,3 +114,102 @@ class GuestStubService4 : GuestStubService()
 class GuestStubService5 : GuestStubService()
 class GuestStubService6 : GuestStubService()
 class GuestStubService7 : GuestStubService()
+
+// Jobs (JobScheduler, which WorkManager and many SDKs use). The scheduler refuses a job whose service is not in this
+// app, so the game's scheduler is a wrapper that points each job at a stub job service; the stub runs the game's own
+// JobService object the way the stubs above do.
+object GuestJobs {
+    private const val TAG = "GuestHost"
+    private val classes: Array<Class<*>> = arrayOf(
+        GuestStubJob0::class.java, GuestStubJob1::class.java, GuestStubJob2::class.java, GuestStubJob3::class.java,
+        GuestStubJob4::class.java, GuestStubJob5::class.java, GuestStubJob6::class.java, GuestStubJob7::class.java)
+    private val targets = arrayOfNulls<String>(classes.size)
+
+    @Synchronized
+    private fun stubFor(target: String): Class<*>? {
+        var i = targets.indexOf(target)
+        if (i < 0) i = targets.indexOf(null)
+        if (i < 0) { Log.w(TAG, "job service $target: no free stub"); return null }
+        targets[i] = target
+        return classes[i]
+    }
+
+    @Synchronized
+    fun targetOf(stub: String): String? {
+        val i = classes.indexOfFirst { it.name == stub }
+        return if (i < 0) null else targets[i]
+    }
+
+    // A copy of the job aimed at a stub (JobInfo has no setter for its service, so it is copied through a parcel).
+    fun redirect(g: GuestRuntime.Guest, job: android.app.job.JobInfo): android.app.job.JobInfo {
+        val cn = job.service
+        if (cn.packageName != g.pkg) return job
+        val cls = if (cn.className.startsWith(".")) g.pkg + cn.className else cn.className
+        val stub = stubFor(cls) ?: return job
+        return try {
+            val parcel = android.os.Parcel.obtain()
+            val copy: android.app.job.JobInfo
+            try {
+                job.writeToParcel(parcel, 0)
+                parcel.setDataPosition(0)
+                copy = android.app.job.JobInfo.CREATOR.createFromParcel(parcel)
+            } finally { parcel.recycle() }
+            val f = android.app.job.JobInfo::class.java.getDeclaredField("service").apply { isAccessible = true }
+            f.set(copy, ComponentName(HostApp.instance.packageName, stub.name))
+            Log.i(TAG, "job ${job.id}: $cls -> ${stub.simpleName}")
+            copy
+        } catch (t: Throwable) { Log.w(TAG, "job redirect failed: $t"); job }
+    }
+
+    fun wrap(real: android.app.job.JobScheduler, g: GuestRuntime.Guest): android.app.job.JobScheduler = Wrapper(real, g)
+
+    private class Wrapper(val r: android.app.job.JobScheduler, val g: GuestRuntime.Guest) : android.app.job.JobScheduler() {
+        override fun schedule(job: android.app.job.JobInfo): Int = r.schedule(redirect(g, job))
+        override fun enqueue(job: android.app.job.JobInfo, work: android.app.job.JobWorkItem): Int = r.enqueue(redirect(g, job), work)
+        override fun cancel(jobId: Int) = r.cancel(jobId)
+        override fun cancelAll() = r.cancelAll()
+        override fun getAllPendingJobs(): MutableList<android.app.job.JobInfo> = r.allPendingJobs
+        override fun getPendingJob(jobId: Int): android.app.job.JobInfo? = r.getPendingJob(jobId)
+    }
+}
+
+open class GuestStubJob : android.app.job.JobService() {
+    private var d: android.app.job.JobService? = null
+
+    private fun delegate(): android.app.job.JobService? {
+        d?.let { return it }
+        val g = GuestRuntime.current
+        val target = GuestJobs.targetOf(javaClass.name)
+        if (g == null || target == null) return null
+        return try {
+            val s = makeGameService(this, target, g) as android.app.job.JobService
+            d = s
+            s.onCreate()
+            Log.i("GuestHost", "game job service created: $target")
+            s
+        } catch (t: Throwable) { Log.e("GuestHost", "game job service $target failed", t); null }
+    }
+
+    // jobFinished() on the game's object needs the engine the system bound to this stub
+    private fun share() {
+        try {
+            val f = android.app.job.JobService::class.java.getDeclaredField("mEngine").apply { isAccessible = true }
+            f.set(d, f.get(this))
+        } catch (t: Throwable) { }
+    }
+
+    override fun onStartJob(params: android.app.job.JobParameters): Boolean { val s = delegate() ?: return false; share(); return s.onStartJob(params) }
+    override fun onStopJob(params: android.app.job.JobParameters): Boolean = d?.onStopJob(params) ?: false
+    override fun onLowMemory() { d?.onLowMemory() }
+    override fun onTrimMemory(level: Int) { d?.onTrimMemory(level) }
+    override fun onDestroy() { try { d?.onDestroy() } catch (t: Throwable) { }; d = null; super.onDestroy() }
+}
+
+class GuestStubJob0 : GuestStubJob()
+class GuestStubJob1 : GuestStubJob()
+class GuestStubJob2 : GuestStubJob()
+class GuestStubJob3 : GuestStubJob()
+class GuestStubJob4 : GuestStubJob()
+class GuestStubJob5 : GuestStubJob()
+class GuestStubJob6 : GuestStubJob()
+class GuestStubJob7 : GuestStubJob()

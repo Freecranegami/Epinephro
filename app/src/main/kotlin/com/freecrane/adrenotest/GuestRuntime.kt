@@ -204,6 +204,15 @@ object GuestRuntime {
     // that way (Firebase, androidx.startup, ad and analytics SDKs, lifecycle). Nothing does that for an imported game, so a
     // game calling into them finds them uninitialised and crashes. Create the game's own providers here, in the same
     // order Android would (highest initOrder first); one that fails is skipped and logged.
+    private fun registerProvider(c: Context, p: android.content.pm.ProviderInfo): Boolean {
+        return try {
+            val at = Class.forName("android.app.ActivityThread").getMethod("currentActivityThread").invoke(null)
+            val m = at.javaClass.declaredMethods.first { it.name == "installProvider" && it.parameterTypes.size == 6 }
+            m.isAccessible = true
+            m.invoke(at, c, null, p, false, true, true) != null
+        } catch (t: Throwable) { Log.w(TAG, "provider registration: ${(t.cause ?: t)}"); false }
+    }
+
     private fun startProviders(host: Context, g: Guest) {
         if (!Tweaks.stubs(host)) { Log.i(TAG, "startup providers: off"); return }
         try {
@@ -216,7 +225,10 @@ object GuestRuntime {
                 try {
                     p.applicationInfo = g.ai
                     val cp = g.loader.loadClass(p.name).getDeclaredConstructor().newInstance() as android.content.ContentProvider
-                    cp.attachInfo(GuestContext(host, g), p)
+                    val gc = GuestContext(host, g)
+                    // Register it with this process's ActivityThread like the system would, so a content lookup of its
+                    // authority (the game's own FileProvider, Firebase, WorkManager...) finds it. Falls back to a plain attach.
+                    if (!registerProvider(gc, p)) cp.attachInfo(gc, p)
                     ok++
                     Log.i(TAG, "startup provider ${p.name}: started")
                 } catch (t: Throwable) {

@@ -68,6 +68,8 @@ class HostApp : Application() {
             if (!Tweaks.light(this)) GuestLogFile.start(this)   // light mode: no log capture to a file
             HiddenApi.exemptAll()
             MainGuard.install()
+            // this app targets API 28: sharing a file:// URI would kill the game with FileUriExposedException. A real install of an old game would not.
+            try { android.os.StrictMode::class.java.getMethod("disableDeathOnFileUriExposure").invoke(null) } catch (t: Throwable) { }
             if (Build.VERSION.SDK_INT >= 29) registerActivityLifecycleCallbacks(GuestSwap)
         }
     }
