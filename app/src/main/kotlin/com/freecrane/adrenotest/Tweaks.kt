@@ -116,6 +116,21 @@ object Tweaks {
             }
         } catch (t: Throwable) { Log.w("GuestHost", "display: ignoring the notch failed: $t") }
         applySustained(a)
+        applyRefresh(a)
+    }
+
+    // With a frame limit set, ask the screen to run at a refresh rate that fits it (24 to 120 fps: the screen picks the
+    // nearest mode, or a multiple of it). Without this a game limited to 30 or 60 fps can keep the panel at 120 Hz, which
+    // costs power and makes the draw swing as frames land between refreshes.
+    private fun applyRefresh(a: android.app.Activity) {
+        try {
+            val fps = pace(a)
+            if (fps <= 0) return
+            val lp = a.window.attributes
+            lp.preferredRefreshRate = fps.toFloat()
+            a.window.attributes = lp
+            Log.i("GuestHost", "performance: asked the screen for $fps Hz to match the frame limit")
+        } catch (t: Throwable) { Log.w("GuestHost", "performance: refresh hint failed: $t") }
     }
 
     private fun applySustained(a: android.app.Activity) {
