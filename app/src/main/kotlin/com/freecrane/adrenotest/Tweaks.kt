@@ -131,7 +131,7 @@ object Tweaks {
 
     // Upscaler: the game renders smaller than the screen (the Resolution set here, or the game's own resolution option)
     // and the picture is upscaled to the screen: 0 = off, 1 = Snapdragon Game Super Resolution 1, 2 = AMD FSR 1 (EASU + RCAS), 3 = SGSR Quality (SGSR 1 edge-direction variant).
-    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "MWSR (MoonlightWeb Super Resolution)", "EGSR (Epinephro Game Super Resolution)", "FSR-1P (FSR 1 in one pass, for Adreno)")
+    val upscalers = listOf("Off", "SGSR 1 (Snapdragon Game Super Resolution)", "FSR 1 (AMD FidelityFX, EASU + RCAS)", "SGSR Quality (SGSR 1 with edge direction)", "MWSR (MoonlightWeb Super Resolution)", "EGSR (Epinephro Game Super Resolution)", "FSR-1P (FSR 1 in one pass, for Adreno)", "EGSR-CAS (EGSR with AMD CAS sharpening)")
     fun upscaler(ctx: Context): Int {
         val p = Prefs.get(ctx)
         var v = p.getInt("upscaler", if (p.getBoolean("sgsr", false)) 1 else 0)
@@ -151,6 +151,8 @@ object Tweaks {
     val paceFps = intArrayOf(0, 24, 30, 40, 45, 48, 60, 72, 90, 120)
     fun pace(ctx: Context): Int = Prefs.get(ctx).getInt("pace_fps", 0)
     fun setPace(ctx: Context, v: Int) { Prefs.get(ctx).edit().putInt("pace_fps", v).commit() }
+    fun casPercent(ctx: Context): Int = Prefs.get(ctx).getInt("cas_pct", 40).coerceIn(0, 100)
+    fun setCasPercent(ctx: Context, v: Int) { Prefs.get(ctx).edit().putInt("cas_pct", v.coerceIn(0, 100)).commit() }
     fun rcasPercent(ctx: Context): Int = Prefs.get(ctx).getInt("rcas_pct", 90).coerceIn(0, 100)
     fun setRcasPercent(ctx: Context, v: Int) { Prefs.get(ctx).edit().putInt("rcas_pct", v.coerceIn(0, 100)).commit() }
     // EGSR tunables: boost x100, limit x1000, edge threshold x1000, margin x1000, compare 0/1
@@ -258,10 +260,11 @@ object Tweaks {
                 Os.setenv("LAS_KGSL_TRACE_DIR", d.path, true)
             }
             val up = upscaler(ctx)
-            Os.setenv("LAS_SGSR", if (up == 1) "1" else if (up == 3) "2" else if (up == 4) "4" else if (up == 5) "5" else if (up == 6) "6" else "0", true)
+            Os.setenv("LAS_SGSR", if (up == 1) "1" else if (up == 3) "2" else if (up == 4) "4" else if (up == 5) "5" else if (up == 6) "6" else if (up == 7) "7" else "0", true)
             Os.setenv("LAS_FSR", if (up == 2) "1" else "0", true)
             Os.setenv("LAS_KEEP", if (stretch(ctx)) "0" else "1", true)
             Os.setenv("LAS_EGSR", ep2Env(ctx), true)
+            Os.setenv("LAS_EGSR_CAS", "${casPercent(ctx) / 100f},0.04", true)
             Os.setenv("LAS_RCAS", rcasStops(rcasPercent(ctx)).toString(), true)
             Os.setenv("LAS_VRS", vrs(ctx).toString(), true)
             Os.setenv("LAS_PACE_FPS", pace(ctx).toString(), true)

@@ -24,6 +24,7 @@
 #include "fsr1p_spv.h"
 #include "mwsr_spv.h"
 #include "egsr_spv.h"
+#include "egsr_cas_spv.h"
 #include "hdr_spv.h"
 
 #define BLOG(...) __android_log_print(ANDROID_LOG_INFO, "GuestHost", __VA_ARGS__)
@@ -222,6 +223,10 @@ static void bench_run(char *out, size_t on, void *vk, int iw, int ih, int ow, in
     ADD("MWSR", sgsr_vs_spv, mwsr_fs_spv, 48, 0); memcpy(P[np_ - 1].push, mw, 48);     /* 5 */
     float eg[16] = { 1.0f / iw, 1.0f / ih, (float)iw, (float)ih, 2.0f, 0.02f, 0.004f, 0.15f, 0.12f, 0.0f, 1.5f, 0.02f, 0.5f * 1.5f / ow, 0.5f * 1.5f / oh, 0.02f, 0.0f };
     ADD("EGSR", sgsr_vs_spv, egsr_fs_spv, 64, 0); memcpy(P[np_ - 1].push, eg, 64);     /* 6 */
+    float ec[16]; memcpy(ec, eg, 64); ec[10] = 0.4f; ec[11] = 0.0f; ec[12] = 1.0f / ow; ec[13] = 1.0f / oh; ec[14] = 0.04f;
+    ADD("EGSR-CAS", sgsr_vs_spv, egsr_cas_fs_spv, 64, 0); memcpy(P[np_ - 1].push, ec, 64);
+    float en[16]; memcpy(en, eg, 64); en[10] = 0.0f;
+    ADD("EGSR, sharpening off", sgsr_vs_spv, egsr_fs_spv, 64, 0); memcpy(P[np_ - 1].push, en, 64);
     uint32_t fp[20]; memcpy(fp, easu, 64); fp[16] = shb; fp[17] = fp[18] = fp[19] = 0;
     ADD("FSR-1P (FSR 1 in one pass)", fsr_vs_spv, fsr1p_fs_spv, 80, 0); memcpy(P[np_ - 1].push, fp, 80);   /* 7 */
     float hd[4] = { 200.0f, 600.0f, 0.5f, 0.0f };

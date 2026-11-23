@@ -656,6 +656,24 @@ class MainActivity : Activity() {
             .show()
     }
 
+    private fun chooseCas(out: TextView) {
+        val bar = M3Seek(this, 100, Tweaks.casPercent(this@MainActivity)) { }
+        val label = TextView(this).apply { setPadding(48, 32, 48, 0) }
+        fun show(p: Int) { label.text = "CAS strength: $p %  (0 % = no sharpening and the extra reads are skipped; flat areas are always skipped)" }
+        show(bar.progress)
+        bar.addOnChangeListener { _, v, _ -> show(v.toInt()) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 16, 24, 0); addView(label); addView(bar) }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("EGSR-CAS sharpening")
+            .setView(box)
+            .setPositiveButton("Set") { _, _ ->
+                Tweaks.setCasPercent(this, bar.progress)
+                out.text = "CAS strength ${bar.progress} %. Only used when the upscaler is EGSR-CAS. Applies the next time the game starts."
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun chooseEpiSr2Look(out: TextView) {
         val names = Tweaks.ep2Looks.map { it.first }.toTypedArray()
         MaterialAlertDialogBuilder(this).setTitle("EGSR look")
@@ -962,6 +980,7 @@ class MainActivity : Activity() {
         action(b, "HDR paper white", "${Tweaks.hdrWhite(this)} nits") { chooseHdrWhite() }
         action(b, "HDR highlight boost", if (Tweaks.hdrBoost(this) == 0) "Off" else "${Tweaks.hdrBoost(this)} %") { chooseHdrBoost() }
         action(b, "Frame pacing", if (Tweaks.pace(this) == 0) "Off" else "${Tweaks.pace(this)} fps, evenly spaced") { choosePace() }
+        action(b, "CAS strength (EGSR-CAS)", "${Tweaks.casPercent(this)} %") { chooseCas(outView) }
         action(b, "RCAS sharpness (FSR 1, FSR-1P)", "${Tweaks.rcasPercent(this)} %") { chooseRcas(outView) }
         toggle(b, "Ignore notch", "Draws the game under the camera cut-out, so it uses the whole screen. Parts of the game's picture at the edge can be hidden by the notch.",
             { Tweaks.ignoreNotch(this) }) { Tweaks.setIgnoreNotch(this, !Tweaks.ignoreNotch(this)); outView.text = "Ignore notch ${if (Tweaks.ignoreNotch(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
