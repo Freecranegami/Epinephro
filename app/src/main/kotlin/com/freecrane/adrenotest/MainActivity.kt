@@ -1563,7 +1563,7 @@ class MainActivity : Activity() {
         row.background = Theme.toggleBg(pair, sw.isChecked, dp(16).toFloat())
         sw.setOnCheckedChangeListener { _, on -> Theme.setLight(this, on); ui.postDelayed({ recreate() }, 350) }   // after the switch has moved
         row.setOnClickListener { sw.toggle() }
-        row.addView(texts("Light mode", "Brighter colours, for the whole app"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(texts("Light Theme", "Brighter colours, for the whole app"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row.addView(sw)
         parent.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(14), dp(12), dp(14), dp(6)) })
     }
@@ -1646,7 +1646,7 @@ class MainActivity : Activity() {
             addView(statusPanel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(12), dp(4), dp(12), dp(12)) })
         }
 
-        // side menu (Material 3 navigation drawer): just the name, the light mode switch, then the sections
+        // side menu (Material 3 navigation drawer): just the name, the Light Theme switch, then the sections
         scrim = android.view.View(this).apply { setBackgroundColor(0x99000000.toInt()); alpha = 0f; visibility = android.view.View.GONE; setOnClickListener { closeDrawer() } }
         drawerPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

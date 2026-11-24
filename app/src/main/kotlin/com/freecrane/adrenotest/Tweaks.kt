@@ -79,7 +79,7 @@ object Tweaks {
     // (the phone's sustained-performance mode, when it has one, plus a little more priority for the render thread).
     fun pcache(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("pcache", true)
     fun setPcache(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("pcache", on).commit() }
-    fun sustained(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("sustained", true)
+    fun sustained(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("sustained", false)
     fun setSustained(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("sustained", on).commit() }
 
     // FSR upscaling maths in half (16-bit) precision: faster on Adreno; switch off if the picture shows artefacts.
