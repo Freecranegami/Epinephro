@@ -89,6 +89,12 @@ object GuestPm {
                 return try {
                     val pi = pm.getPackageArchiveInfo(g.apk.path, flags.toInt()) ?: return null
                     pi.applicationInfo = g.ai
+                    // An archive has no install record; a real install does. Games compare these to "now".
+                    if (pi.firstInstallTime == 0L) {
+                        val t = g.apk.lastModified()
+                        pi.firstInstallTime = t
+                        pi.lastUpdateTime = t
+                    }
                     val sn = GuestRuntime.splitNames
                     if (sn.isNotEmpty()) {
                         pi.splitNames = sn
@@ -176,6 +182,19 @@ object GuestPm {
                                 return ct.newInstance(*v)
                             }
                         } catch (t: Throwable) { Log.w(TAG, "install source info failed: $t") }
+                    }
+                }
+            }
+            // "Is this game installed on the phone?" Android has no record of the package, so tell the game it does:
+            // the same uid as this process, the signature check passing, the name for its uid.
+            if (stubsOn()) {
+                val myUid = android.os.Process.myUid()
+                when (m.name) {
+                    "getPackageUid" -> if (a.getOrNull(0) == g.pkg) { note(m, a, "-> this process's uid"); return myUid }
+                    "getPackagesForUid" -> if ((a.getOrNull(0) as? Int) == myUid) { note(m, a, "-> ${g.pkg}"); return arrayOf(g.pkg) }
+                    "getNameForUid" -> if ((a.getOrNull(0) as? Int) == myUid) { note(m, a, "-> ${g.pkg}"); return g.pkg }
+                    "checkSignatures" -> if (a.getOrNull(0) == g.pkg || a.getOrNull(1) == g.pkg) {
+                        note(m, a, "-> signatures match"); return PackageManager.SIGNATURE_MATCH
                     }
                 }
             }
