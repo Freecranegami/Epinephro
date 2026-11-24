@@ -15,7 +15,26 @@ import java.util.zip.ZipInputStream
 object Drivers {
     class Info(val id: String, val dir: File, val name: String, val library: String, val kind: String,
                val version: String, val minApi: Int, val bundled: Boolean) {
-        val label: String get() = "$name  [$kind${if (version.isNotEmpty()) ", $version" else ""}]" + if (bundled) "  (bundled, default)" else ""
+        val label: String get() = "$name  [$kind${if (version.isNotEmpty()) ", $version" else ""}]" + if (bundled) "  (bundled, default)" else if (id == SYSTEM_ID) "  (the phone's own)" else ""
+    }
+
+    const val SYSTEM_ID = "system"
+    // The phone's own Vulkan driver (no custom library): the loader gets an empty folder and name and opens libvulkan.so.
+    fun system() = Info(SYSTEM_ID, File(""), "System driver", "", "System", "", 0, false)
+
+    private var mali: Boolean? = null
+    // An Arm Mali GPU, judged from the phone's Vulkan/EGL hardware names and the Mali kernel device. Cached.
+    fun isMali(): Boolean {
+        mali?.let { return it }
+        fun prop(k: String): String = try {
+            Class.forName("android.os.SystemProperties").getMethod("get", String::class.java, String::class.java)
+                .invoke(null, k, "") as String
+        } catch (t: Throwable) { "" }
+        val names = listOf("ro.hardware.vulkan", "ro.hardware.egl").map { prop(it).lowercase() }
+        val v = names.any { it.contains("mali") } ||
+            (names.none { it.contains("adreno") } && (File("/dev/mali0").exists() || File("/sys/class/misc/mali0").exists()))
+        mali = v
+        return v
     }
 
     private const val PREFS = "las"
@@ -50,6 +69,7 @@ object Drivers {
     fun list(ctx: Context): List<Info> {
         val out = ArrayList<Info>()
         bundled(ctx)?.let { out.add(it) }
+        out.add(system())
         root(ctx).listFiles { f -> f.isDirectory }?.sortedBy { it.name }?.forEach { d -> read(d, d.name, false)?.let { out.add(it) } }
         return out
     }
@@ -60,6 +80,8 @@ object Drivers {
     // The driver the game uses: the chosen one, or the bundled Turnip when none is chosen or the files are gone.
     fun active(ctx: Context): Info {
         val id = selectedId(ctx)
+        // Nothing chosen on a Mali phone: the bundled Turnip is an Adreno driver, so the phone's own driver is the default
+        if ((id == SYSTEM_ID) || (id.isEmpty() && isMali())) { Log.i("GuestHost", "driver in use: ${system().label}"); return system() }
         if (id.isNotEmpty()) {
             val d = read(File(root(ctx), id), id, false)
             if (d != null) { Log.i("GuestHost", "driver in use: ${d.label}"); return d }
@@ -71,7 +93,7 @@ object Drivers {
     }
 
     fun delete(ctx: Context, id: String): Boolean {
-        if (id.isEmpty() || id.contains('/') || id.contains("..")) return false
+        if (id.isEmpty() || id == SYSTEM_ID || id.contains('/') || id.contains("..")) return false
         if (selectedId(ctx) == id) select(ctx, "")
         return File(root(ctx), id).deleteRecursively()
     }

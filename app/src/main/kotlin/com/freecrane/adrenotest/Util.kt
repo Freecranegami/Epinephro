@@ -34,7 +34,8 @@ object Util {
         return if (custom) {
             installDriver(ctx)                       // keeps the bundled copy in place
             val d = Drivers.active(ctx)
-            listOf("$tmp/", "$hook/", "${d.dir}/", d.library)
+            if (d.id == Drivers.SYSTEM_ID) listOf("$tmp/", "$hook/", "", "")     // the phone's own driver
+            else listOf("$tmp/", "$hook/", "${d.dir}/", d.library)
         } else {
             listOf("$tmp/", "$hook/", "", "")
         }

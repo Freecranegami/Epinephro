@@ -943,6 +943,9 @@ class MainActivity : Activity() {
         c.addView(android.widget.ImageView(this).apply { setImageResource(R.drawable.ic_chevron); setColorFilter(cSub) }, LinearLayout.LayoutParams(dp(24), dp(24)))
     }
 
+    // Settings that only do something on an Adreno GPU get "(Adreno)" on a Mali phone; Adreno phones see the plain name.
+    private fun ad(title: String): String = if (Drivers.isMali()) "$title (Adreno)" else title
+
     private fun toggle(b: LinearLayout, title: String, sub: String?, get: () -> Boolean, flip: () -> Unit) {
         val c = card(b, null)
         val sw = com.google.android.material.materialswitch.MaterialSwitch(this)
@@ -975,7 +978,7 @@ class MainActivity : Activity() {
         if (Prefs.scope == null) action(b, "Test upscaler GPU cost", "Times every upscaler on this phone's GPU, no game needed") { benchUpscalers() }
         action(b, "EGSR look", "Natural, Crisp (FSR 1 sharpness) or Punchy") { chooseEpiSr2Look(outView) }
         action(b, "EGSR tuning", "boost, limit, edge, compare split") { chooseEpiSr2(outView) }
-        action(b, "Variable-rate shading (experimental)", Tweaks.vrsModes[Tweaks.vrs(this)]) { chooseVrs() }
+        action(b, ad("Variable-rate shading (experimental)"), Tweaks.vrsModes[Tweaks.vrs(this)]) { chooseVrs() }
         toggle(b, "HDR10 output (experimental)", "Expands the game's picture to HDR10 on an HDR screen: brighter highlights, wider colours. Works on any game", { Tweaks.hdr(this) }) { toggleHdr(outView) }
         action(b, "HDR paper white", "${Tweaks.hdrWhite(this)} nits") { chooseHdrWhite() }
         action(b, "HDR highlight boost", if (Tweaks.hdrBoost(this) == 0) "Off" else "${Tweaks.hdrBoost(this)} %") { chooseHdrBoost() }
@@ -1163,21 +1166,21 @@ class MainActivity : Activity() {
 
     private fun addDevice(b: LinearLayout) {
         header(b, "Device")
-        action(b, "GPU spoof", GpuSpoof.presets[GpuSpoof.index(this)].label) { chooseGpu(outView) }
+        action(b, ad("GPU spoof"), GpuSpoof.presets[GpuSpoof.index(this)].label) { chooseGpu(outView) }
         action(b, "CPU spoof", GpuSpoof.cpus[GpuSpoof.cpuIndex(this)].label) { chooseCpu(outView) }
         action(b, "Device spoof", GpuSpoof.devices[GpuSpoof.deviceIndex(this)].label) { chooseDevice(outView) }
         toggle(b, "Focus guard", "Keeps the game running when the notification shade opens", { FocusGuard.enabled(this) }) { toggleFocusGuard(outView) }
         toggle(b, "Light mode", "No diagnostics, best performance. Turn it OFF to record a Guest log for a bug report", { Tweaks.light(this) }) { toggleLight(outView) }
         toggle(b, "Depth buffer diagnostic", "Logs whether screen-space effects could use this game's depth. Play 2 minutes, then send the Guest log", { Tweaks.depthDiag(this) }) { toggleDepthDiag(outView) }
-        toggle(b, "GPU command trace (experimental)", "Records what the GPU driver asks the kernel to do, to compare Turnip with the Qualcomm driver. Needs Light mode OFF", { Tweaks.kgslTrace(this) }) { toggleKgslTrace(outView) }
+        toggle(b, ad("GPU command trace (experimental)"), "Records what the GPU driver asks the kernel to do, to compare Turnip with the Qualcomm driver. Needs Light mode OFF", { Tweaks.kgslTrace(this) }) { toggleKgslTrace(outView) }
     }
 
     private fun addDriver(b: LinearLayout) {
         header(b, "Driver")
         val drv = try { Drivers.list(this).firstOrNull { it.id == Drivers.selectedId(this) }?.label } catch (t: Throwable) { null }
         action(b, "Vulkan driver", drv ?: "Bundled") { chooseDriver(outView) }
-        action(b, "Turnip render mode", Tweaks.tuModes[Tweaks.tuMode(this)].substringBefore(" (")) { chooseTurnipMode(outView) }
-        action(b, "Turnip environment variables", Tweaks.tuExtra(this).lines().count { it.contains('=') }.let { if (it == 0) "None" else "$it set" }) { editTurnipEnv(outView) }
+        action(b, ad("Turnip render mode"), Tweaks.tuModes[Tweaks.tuMode(this)].substringBefore(" (")) { chooseTurnipMode(outView) }
+        action(b, if (Drivers.isMali()) "Driver environment variables (PANVK_* for PanVK; TU_* is Adreno)" else "Turnip environment variables", Tweaks.tuExtra(this).lines().count { it.contains('=') }.let { if (it == 0) "None" else "$it set" }) { editTurnipEnv(outView) }
         toggle(b, "OpenGL ES via ANGLE", "For games that use OpenGL ES instead of Vulkan: translates it to Vulkan so it runs on the custom driver and the layer. Experimental. The first start afterwards rewrites the game's libraries.",
             { Tweaks.angle(this) }) { Tweaks.setAngle(this, !Tweaks.angle(this)); refreshPage() }
         header(b, "Performance")
@@ -1185,7 +1188,7 @@ class MainActivity : Activity() {
             { Tweaks.pcache(this) }) { Tweaks.setPcache(this, !Tweaks.pcache(this)); refreshPage() }
         toggle(b, "Sustained performance", "Asks the phone for steady speed instead of short bursts that then throttle (if it has the mode) and gives the render thread a little more priority. Applies the next time the game starts.",
             { Tweaks.sustained(this) }) { Tweaks.setSustained(this, !Tweaks.sustained(this)); refreshPage() }
-        toggle(b, "FSR half precision", "Runs the FSR upscale in 16-bit maths, which is faster on Adreno GPUs. Turn it off if the picture shows odd colours or noise. Applies the next time the game starts.",
+        toggle(b, ad("FSR half precision"), "Runs the FSR upscale in 16-bit maths, which is faster on Adreno GPUs. Turn it off if the picture shows odd colours or noise. Applies the next time the game starts.",
             { Tweaks.fsrHalf(this) }) { Tweaks.setFsrHalf(this, !Tweaks.fsrHalf(this)); outView.text = "FSR half precision ${if (Tweaks.fsrHalf(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }
         toggle(b, "Performance overlay", "FusionHUD: FPS with a frame-time graph and 1% / 0.01% lows, GPU and CPU load and temperature, memory, battery and power. Tap to change its size, drag to move, long-press to lock.",
             { PerfOverlay.enabled(this) }) { PerfOverlay.setEnabled(this, !PerfOverlay.enabled(this)); outView.text = "Performance overlay ${if (PerfOverlay.enabled(this)) "ON" else "OFF"}. Applies the next time the game starts."; refreshPage() }

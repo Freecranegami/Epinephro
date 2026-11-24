@@ -13,6 +13,10 @@ static void *g_custom = NULL;
 static void *open_vk(const char *tmp, const char *hook, const char *dir,
                      const char *name, int custom) {
     if (!custom) return dlopen("libvulkan.so", RTLD_NOW);
+    if (!g_custom && (!name || !*name)) {
+        /* "System driver": no custom library, the phone's own Vulkan loader and driver */
+        g_custom = dlopen("libvulkan.so", RTLD_NOW);
+    }
     if (!g_custom) {
         g_custom = adrenotools_open_libvulkan(RTLD_NOW, ADRENOTOOLS_DRIVER_CUSTOM,
                                               tmp, hook, dir, name, NULL, NULL);
