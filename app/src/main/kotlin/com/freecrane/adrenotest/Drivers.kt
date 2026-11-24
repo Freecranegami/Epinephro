@@ -28,6 +28,7 @@ object Drivers {
         val s = (meta.optString("name") + " " + meta.optString("vendor") + " " + meta.optString("description") +
             " " + meta.optString("libraryName")).lowercase()
         return when {
+            s.contains("panvk") || s.contains("panfrost") || s.contains("mali") -> "PanVK"
             s.contains("turnip") || s.contains("mesa") || s.contains("freedreno") -> "Turnip"
             s.contains("qualcomm") || s.contains("qcom") || s.contains("adreno") -> "Qualcomm"
             else -> "custom"
