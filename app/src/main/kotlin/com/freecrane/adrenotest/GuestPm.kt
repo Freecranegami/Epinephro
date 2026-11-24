@@ -137,6 +137,28 @@ object GuestPm {
                 val ai = activityInfo(target)
                 if (ai != null) { note(m, a, "-> $target from the game's APK (meta-data ${ai.metaData?.size() ?: 0})"); return ai }
             }
+            // Libraries such as androidx.startup look up the game's providers, services and receivers through the host
+            // package's name (context.getPackageName() is ours), so Android says "not found" and the game's initializers
+            // never run. Answer from the game's manifest.
+            if (gameComponent && cn != null &&
+                (m.name == "getProviderInfo" || m.name == "getServiceInfo" || m.name == "getReceiverInfo")) {
+                try {
+                    val pi = pm.getPackageArchiveInfo(g.apk.path,
+                        PackageManager.GET_PROVIDERS or PackageManager.GET_SERVICES or PackageManager.GET_RECEIVERS or
+                            PackageManager.GET_META_DATA)
+                    val list: Array<out android.content.pm.ComponentInfo>? = when (m.name) {
+                        "getProviderInfo" -> pi?.providers
+                        "getServiceInfo" -> pi?.services
+                        else -> pi?.receivers
+                    }
+                    val ci = list?.firstOrNull { it.name == cn.className }
+                    if (ci != null) {
+                        ci.applicationInfo = g.ai
+                        note(m, a, "-> ${cn.className} from the game's APK (meta-data ${ci.metaData?.size() ?: 0})")
+                        return ci
+                    }
+                } catch (t: Throwable) { Log.w(TAG, "game component lookup failed: $t") }
+            }
             // Questions about Google's packages: not installed.
             if (a.any { it is String && isGoogle(it) } && stubsOn()) {
                 when (m.name) {
