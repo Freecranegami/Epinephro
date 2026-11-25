@@ -326,6 +326,8 @@ struct Pass {
     std::vector<int> mipTargets;
     std::vector<VkDescriptorSet> dsv;       // direct mode: one set per source image, for passes that read the game's picture
     bool usesBack = false;
+    bool skip = false;                      // its output is never used with the current settings: not recorded at all
+    bool once = false, done = false;        // its inputs never change (only the constant depth): recorded in the first frame only
     std::string name;
 };
 
@@ -547,6 +549,22 @@ bool buildEffect(Fx &x, const std::string &root, const std::string &file, const 
     VkSpecializationInfo specInfo = {}; specInfo.mapEntryCount = (uint32_t)specMap.size(); specInfo.pMapEntries = specMap.data(); specInfo.dataSize = specData.size() * 4; specInfo.pData = specData.data();
     e.baked = (uint32_t)specMap.size();
 
+    // value of an on/off setting: the preset's, else the effect's default
+    auto settingOn = [&](const char *nm) -> bool {
+        if (pv != pre.values.end()) { auto it = pv->second.find(nm); if (it != pv->second.end() && !it->second.empty()) return it->second[0] != 0; }
+        for (auto &sc : m.spec_constants) if (sc.name == nm) return sc.initializer_value.as_uint[0] != 0;
+        for (auto &u : m.uniforms) if (u.name == nm) { auto v = initialOf(u); return !v.empty() && v[0] != 0; }
+        return false;
+    };
+    // Bloom pictures never use alpha (except Bloom's anamorphic flare), so their 16-bit float targets can be 11/11/10-bit float: half the memory traffic
+    auto smallFloatOk = [&]() -> bool {
+        if (!x.f.GetFormatProps) return false;
+        VkFormatProperties fp; x.f.GetFormatProps(x.phys, VK_FORMAT_B10G11R11_UFLOAT_PACK32, &fp);
+        const VkFormatFeatureFlags need = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+        return (fp.optimalTilingFeatures & need) == need;
+    };
+    const bool shrinkFloat = (base == "MagicBloom" || (base == "Bloom" && !settingOn("bAnamFlareEnable"))) && smallFloatOk();
+
     // textures
     for (auto &t : m.textures) {
         Tex tx; tx.t = t;
@@ -559,6 +577,7 @@ bool buildEffect(Fx &x, const std::string &root, const std::string &file, const 
         VkFormat fm = texFormat(tx.t.format);
         uint32_t lv = std::max<uint32_t>(1, tx.t.levels);
         std::string src = annStr(tx.t.annotations, "source");
+        if (shrinkFloat && src.empty() && fm == VK_FORMAT_R16G16B16A16_SFLOAT) fm = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
         // Only textures loaded from a file are ever read through an sRGB view, and only ones with mip levels are blitted: every other texture
         // stays a plain colour image, which lets Adreno keep its lossless framebuffer compression (UBWC) and so saves memory bandwidth.
         VkImageUsageFlags us = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -757,6 +776,26 @@ bool buildEffect(Fx &x, const std::string &root, const std::string &file, const 
                 for (auto v : views) { Tex dummy; dummy.kind = 3; dummy.img.v = v; dummy.img.owned = false; e.tex.push_back(std::move(dummy)); }
             }
             e.passes.push_back(std::move(p));
+        }
+    }
+
+    // passes that cost GPU time for nothing
+    {
+        const bool flares = settingOn("bAnamFlareEnable") || settingOn("bLenzEnable") || settingOn("bGodrayEnable") || settingOn("bChapFlareEnable");
+        size_t pi = 0;
+        for (auto &t : m.techniques) {
+            for (auto &rp : t.passes) {
+                Pass &p = e.passes[pi++];
+                if (base == "Bloom" && !flares && p.name.find("LensFlarePass") != std::string::npos) p.skip = true;
+                if (!p.toBack && !p.targets.empty() && e.dyn.empty() && !rp.sampler_bindings.empty()) {
+                    bool allDepth = true;
+                    for (auto &sb : rp.sampler_bindings) {
+                        int ti = findTex(e, m.samplers[sb.index].texture_name);
+                        if (ti < 0 || e.tex[ti].kind != 2) allDepth = false;
+                    }
+                    if (allDepth) p.once = true;
+                }
+            }
         }
     }
     return true;
@@ -1114,6 +1153,7 @@ API void epifx_record(void *hp, void *cbp, uint64_t outFramebuffer, uint32_t slo
     for (auto *e : h->order) {
         if (x.qp) f.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, x.qp, ei * 2);
         for (auto &p : e->passes) {
+            if (p.skip || (p.once && p.done)) continue;
             VkRenderPassBeginInfo rb = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
             if (p.toOut) { rb.renderPass = x.finalRp; rb.framebuffer = reinterpret_cast<VkFramebuffer>(outFramebuffer); }
             else { rb.renderPass = p.rp; rb.framebuffer = p.fb; }
@@ -1125,6 +1165,7 @@ API void epifx_record(void *hp, void *cbp, uint64_t outFramebuffer, uint32_t slo
             f.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pl, 0, 2, ds, 0, nullptr);
             f.CmdDraw(cb, p.nv, 1, 0, 0);
             f.CmdEndRenderPass(cb);
+            if (p.once) p.done = true;
             for (int ti : p.mipTargets) genMips(x, cb, e->tex[ti].img, true, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
         }
         if (x.qp) f.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, x.qp, ei * 2 + 1);

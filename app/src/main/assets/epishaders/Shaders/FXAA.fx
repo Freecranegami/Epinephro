@@ -33,7 +33,8 @@ uniform float EdgeThresholdMin < __UNIFORM_SLIDER_FLOAT1
 #endif
 
 #ifndef FXAA_GREEN_AS_LUMA
-	#define FXAA_GREEN_AS_LUMA 0
+	// 1 = read luma from the green channel: drops the separate full-screen luma pass (half the work, near-identical result)
+	#define FXAA_GREEN_AS_LUMA 1
 #endif
 
 #ifndef FXAA_LINEAR_LIGHT

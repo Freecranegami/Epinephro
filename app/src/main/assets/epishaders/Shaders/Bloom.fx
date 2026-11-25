@@ -166,14 +166,14 @@ sampler SamplerSprite { Texture = texSprite; };
 
 texture texBloom1
 {
-	Width = BUFFER_WIDTH;
-	Height = BUFFER_HEIGHT;
+	Width = BUFFER_WIDTH / 2;   // was full size: the bloom is blurred anyway, a quarter of the pixels
+	Height = BUFFER_HEIGHT / 2;
 	Format = RGBA16F;
 };
 texture texBloom2
 {
-	Width = BUFFER_WIDTH;
-	Height = BUFFER_HEIGHT;
+	Width = BUFFER_WIDTH / 2;   // was full size: the bloom is blurred anyway, a quarter of the pixels
+	Height = BUFFER_HEIGHT / 2;
 	Format = RGBA16F;
 };
 texture texBloom3
