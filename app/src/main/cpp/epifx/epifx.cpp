@@ -327,7 +327,7 @@ struct Pass {
     std::vector<VkDescriptorSet> dsv;       // direct mode: one set per source image, for passes that read the game's picture
     bool usesBack = false;
     bool skip = false;                      // its output is never used with the current settings: not recorded at all
-    bool once = false, done = false;        // its inputs never change (only the constant depth): recorded in the first frame only
+    bool once = false;                      // its inputs never change (only the constant depth): drawn once at upload, never recorded
     std::string name;
 };
 
@@ -1142,6 +1142,25 @@ API int epifx_upload(void *hp, void *queue, uint32_t family) {
                 }
             }
         }
+        // passes whose inputs never change are drawn here, once
+        {
+            VkClearValue clr[8]; memset(clr, 0, sizeof clr);
+            for (auto *e : h->order) {
+                for (auto &p : e->passes) {
+                    if (!p.once || p.skip) continue;
+                    VkRenderPassBeginInfo rb = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+                    rb.renderPass = p.rp; rb.framebuffer = p.fb;
+                    rb.renderArea = { { 0, 0 }, { e->tex[p.targets[0]].img.w, e->tex[p.targets[0]].img.h } };
+                    rb.clearValueCount = 8; rb.pClearValues = clr;
+                    f.CmdBeginRenderPass(cb, &rb, VK_SUBPASS_CONTENTS_INLINE);
+                    f.CmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pipe);
+                    VkDescriptorSet ds[2] = { e->ds0, p.ds1 };
+                    f.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pl, 0, 2, ds, 0, nullptr);
+                    f.CmdDraw(cb, p.nv, 1, 0, 0);
+                    f.CmdEndRenderPass(cb);
+                }
+            }
+        }
         f.EndCommandBuffer(cb);
         VkFenceCreateInfo fci = { VK_STRUCTURE_TYPE_FENCE_CREATE_INFO }; VkFence fence; f.CreateFence(x.dev, &fci, nullptr, &fence);
         VkSubmitInfo si = { VK_STRUCTURE_TYPE_SUBMIT_INFO }; si.commandBufferCount = 1; si.pCommandBuffers = &cb;
@@ -1170,8 +1189,9 @@ API void epifx_record(void *hp, void *cbp, uint64_t outFramebuffer, uint32_t slo
     mb.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
     mb.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
     f.CmdPipelineBarrier(cb, st, st, 0, 1, &mb, 0, nullptr, 0, nullptr);
-    // GPU timing is sampled one frame in 16 (reset, timestamps and the CPU read-back all cost something every frame otherwise)
-    const bool timed = x.qp && (x.frame % 16 == 0);
+    // The shim records this once per swapchain image and replays it every frame, so the timestamps are in every frame; only the CPU read-back
+    // (epifx_tick) is throttled.
+    const bool timed = x.qp != VK_NULL_HANDLE;
     if (timed) f.CmdResetQueryPool(cb, x.qp, 0, x.nq);
     VkClearValue clr[8]; memset(clr, 0, sizeof clr);
     uint32_t ei = 0;
@@ -1179,7 +1199,7 @@ API void epifx_record(void *hp, void *cbp, uint64_t outFramebuffer, uint32_t slo
         bool firstPass = true;
         if (timed) f.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, x.qp, ei * 2);
         for (auto &p : e->passes) {
-            if (p.skip || (p.once && p.done)) continue;
+            if (p.skip || p.once) continue;
             VkRenderPassBeginInfo rb = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
             if (p.toOut) { rb.renderPass = x.finalRp; rb.framebuffer = reinterpret_cast<VkFramebuffer>(outFramebuffer); }
             else { rb.renderPass = p.rp; rb.framebuffer = p.fb; }
@@ -1194,7 +1214,6 @@ API void epifx_record(void *hp, void *cbp, uint64_t outFramebuffer, uint32_t slo
             firstPass = false;
             f.CmdDraw(cb, p.nv, 1, 0, 0);
             f.CmdEndRenderPass(cb);
-            if (p.once) p.done = true;
             for (int ti : p.mipTargets) genMips(x, cb, e->tex[ti].img, true, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
         }
         if (timed) f.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, x.qp, ei * 2 + 1);
