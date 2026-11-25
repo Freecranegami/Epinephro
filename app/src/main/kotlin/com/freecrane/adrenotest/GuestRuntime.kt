@@ -217,12 +217,20 @@ object GuestRuntime {
         } catch (t: Throwable) { Log.w(TAG, "process name: $t") }
     }
 
-    private fun registerProvider(c: Context, p: android.content.pm.ProviderInfo): Boolean {
+    // Make an already attached provider answer content lookups of its authority in this process. The provider is
+    // attached with the game's own context first (so its resources and package are the game's); registering it with
+    // a holder stops ActivityThread from building a second copy of it with a context of its own, which could not
+    // read the game's resources (androidx.startup: "String resource ID ... not found").
+    private fun registerProvider(cp: android.content.ContentProvider, c: Context, p: android.content.pm.ProviderInfo): Boolean {
         return try {
             val at = Class.forName("android.app.ActivityThread").getMethod("currentActivityThread").invoke(null)
             val m = at.javaClass.declaredMethods.first { it.name == "installProvider" && it.parameterTypes.size == 6 }
             m.isAccessible = true
-            m.invoke(at, c, null, p, false, true, true) != null
+            val hc = Class.forName("android.app.ContentProviderHolder")
+            val holder = hc.getConstructor(android.content.pm.ProviderInfo::class.java).newInstance(p)
+            hc.getField("provider").set(holder, android.content.ContentProvider::class.java.getMethod("getIContentProvider").invoke(cp))
+            hc.getField("noReleaseNeeded").setBoolean(holder, true)
+            m.invoke(at, c, holder, p, false, true, true) != null
         } catch (t: Throwable) { Log.w(TAG, "provider registration: ${(t.cause ?: t)}"); false }
     }
 
@@ -241,7 +249,8 @@ object GuestRuntime {
                     val gc = GuestContext(host, g)
                     // Register it with this process's ActivityThread like the system would, so a content lookup of its
                     // authority (the game's own FileProvider, Firebase, WorkManager...) finds it. Falls back to a plain attach.
-                    if (!registerProvider(gc, p)) cp.attachInfo(gc, p)
+                    cp.attachInfo(gc, p)
+                    registerProvider(cp, gc, p)
                     ok++
                     Log.i(TAG, "startup provider ${p.name}: started")
                 } catch (t: Throwable) {
