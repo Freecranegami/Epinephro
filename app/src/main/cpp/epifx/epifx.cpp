@@ -384,7 +384,7 @@ struct Fx {
     VkRenderPass finalRp = VK_NULL_HANDLE;
     VkRenderPass rpBack = VK_NULL_HANDLE;                 // render pass used for pipelines of passes that render into the picture
     std::vector<std::unique_ptr<Effect>> fx;
-    uint64_t frame = 0;
+    uint64_t frame = 0, polls = 0;
     std::chrono::steady_clock::time_point t0, last;
     bool uploaded = false;
 
@@ -798,6 +798,29 @@ bool buildEffect(Fx &x, const std::string &root, const std::string &file, const 
             }
         }
     }
+
+    // a pass whose render targets no pass of the effect ever reads has no visible result
+    {
+        std::vector<bool> sampled(e.tex.size(), false);
+        size_t pi = 0;
+        for (auto &t : m.techniques)
+            for (auto &rp : t.passes) {
+                Pass &p = e.passes[pi++];
+                for (auto &sb : rp.sampler_bindings) {
+                    int ti = findTex(e, m.samplers[sb.index].texture_name);
+                    if (ti < 0) continue;
+                    bool own = false;
+                    for (int tt : p.targets) if (tt == ti) own = true;
+                    if (!own) sampled[ti] = true;
+                }
+            }
+        for (auto &p : e.passes) {
+            if (p.toBack || p.targets.empty()) continue;
+            bool used = false;
+            for (int ti : p.targets) if (sampled[ti]) used = true;
+            if (!used) { p.skip = true; LOGI("epifx: %s: pass %s writes nothing that is read, skipped", file.c_str(), p.name.c_str()); }
+        }
+    }
     return true;
 }
 
@@ -1147,11 +1170,14 @@ API void epifx_record(void *hp, void *cbp, uint64_t outFramebuffer, uint32_t slo
     mb.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
     mb.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
     f.CmdPipelineBarrier(cb, st, st, 0, 1, &mb, 0, nullptr, 0, nullptr);
-    if (x.qp) f.CmdResetQueryPool(cb, x.qp, 0, x.nq);
+    // GPU timing is sampled one frame in 16 (reset, timestamps and the CPU read-back all cost something every frame otherwise)
+    const bool timed = x.qp && (x.frame % 16 == 0);
+    if (timed) f.CmdResetQueryPool(cb, x.qp, 0, x.nq);
     VkClearValue clr[8]; memset(clr, 0, sizeof clr);
     uint32_t ei = 0;
     for (auto *e : h->order) {
-        if (x.qp) f.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, x.qp, ei * 2);
+        bool firstPass = true;
+        if (timed) f.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, x.qp, ei * 2);
         for (auto &p : e->passes) {
             if (p.skip || (p.once && p.done)) continue;
             VkRenderPassBeginInfo rb = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
@@ -1162,13 +1188,16 @@ API void epifx_record(void *hp, void *cbp, uint64_t outFramebuffer, uint32_t slo
             f.CmdBeginRenderPass(cb, &rb, VK_SUBPASS_CONTENTS_INLINE);
             f.CmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pipe);
             VkDescriptorSet ds[2] = { e->ds0, (!p.dsv.empty() && slot < p.dsv.size()) ? p.dsv[slot] : p.ds1 };
-            f.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pl, 0, 2, ds, 0, nullptr);
+            // set 0 (the effect's uniforms) is the same layout in every pass of an effect, so it stays bound between passes
+            if (firstPass) f.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pl, 0, 2, ds, 0, nullptr);
+            else f.CmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p.pl, 1, 1, &ds[1], 0, nullptr);
+            firstPass = false;
             f.CmdDraw(cb, p.nv, 1, 0, 0);
             f.CmdEndRenderPass(cb);
             if (p.once) p.done = true;
             for (int ti : p.mipTargets) genMips(x, cb, e->tex[ti].img, true, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
         }
-        if (x.qp) f.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, x.qp, ei * 2 + 1);
+        if (timed) f.CmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, x.qp, ei * 2 + 1);
         ei++;
     }
 }
@@ -1200,14 +1229,14 @@ API void epifx_tick(void *hp) {
         memcpy(e->map, e->uboCpu.data(), e->uboCpu.size());
     }
     // GPU time of each effect, from the timestamps of the frames that have finished
-    if (x.qp) {
+    if (x.qp && x.frame % 16 == 8) {
         std::vector<uint64_t> buf(x.nq * 2, 0);
         x.f.GetQueryPoolResults(x.dev, x.qp, 0, x.nq, buf.size() * 8, buf.data(), 16, VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
         for (uint32_t i = 0; i < x.accMs.size(); i++) {
             uint64_t a0 = buf[(2 * i) * 2], av0 = buf[(2 * i) * 2 + 1], a1 = buf[(2 * i + 1) * 2], av1 = buf[(2 * i + 1) * 2 + 1];
             if (av0 && av1 && a1 >= a0) { x.accMs[i] += (double)(a1 - a0) * x.period / 1e6; x.accN[i]++; }
         }
-        if (x.frame % 600 == 0) {
+        if (++x.polls % 38 == 0) {
             std::string line; double total = 0; uint32_t n = 0;
             for (uint32_t i = 0; i < x.accMs.size(); i++) {
                 if (!x.accN[i]) continue;
