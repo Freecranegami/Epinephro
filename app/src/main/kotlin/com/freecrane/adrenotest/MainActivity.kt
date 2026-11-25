@@ -600,7 +600,7 @@ class MainActivity : Activity() {
                 out.text = if (which == 0) "Upscaler OFF. Applies the next time the game starts."
                 else "Upscaler: ${Tweaks.upscalers[which]}. Whenever the game renders smaller than the screen (the Resolution you set here, " +
                     "or the game's own resolution option) the picture is upscaled to the screen. " +
-                    (if (Tweaks.resW(this) <= 0) "With Resolution on Native it only works if the game itself is set below the screen size. " else "") +
+                    (if (Tweaks.resW(this) <= 0 && which != 6) "With Resolution on Native it only works if the game itself is set below the screen size. " else "") +
                     "Applies the next time the game starts. If the screen goes black, turn the upscaler off."
             }
             .show()

@@ -958,7 +958,9 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
         if (wantHdr && wantEpi) { LOGI("hdr: EpiShaders effects are off while HDR is on"); wantEpi = 0; }
     }
     if (!why && caps.currentExtent.width == 0xFFFFFFFFu) why = "surface size unknown";
-    if (!why && !wantLg && !wantEpi && !wantHdr && caps.currentExtent.width == ci.imageExtent.width && caps.currentExtent.height == ci.imageExtent.height)
+    /* EGSR-CAS also runs at the screen's own size (nothing to enlarge: its edge boost and CAS just sharpen), so no resolution override is needed */
+    const char *ue = getenv("LAS_SGSR"); const int sharpenNative = ue && *ue == '7';
+    if (!why && !wantLg && !wantEpi && !wantHdr && !sharpenNative && caps.currentExtent.width == ci.imageExtent.width && caps.currentExtent.height == ci.imageExtent.height)
         why = "the game's swapchain is as big as the screen";
     if (!why && !wantLg && !wantEpi && !wantHdr && wantMode == 3 && (uint64_t)ci.imageExtent.width * caps.currentExtent.height == (uint64_t)ci.imageExtent.height * caps.currentExtent.width)
         why = "the game's picture already has the screen's ratio";
