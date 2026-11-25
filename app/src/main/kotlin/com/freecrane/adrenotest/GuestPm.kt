@@ -45,6 +45,32 @@ object GuestPm {
     @Volatile
     private var logged = 0
 
+    // Every package manager this process creates from now on, and the ones this app already made, answer for the
+    // game. Android keeps ONE static cache of application-info answers shared by all of them, so a single lookup of
+    // the game's package through a package manager that was not hooked (which says "not found") is remembered for
+    // everyone, including the game's own libraries. Hook them all and drop whatever the cache already holds.
+    @Synchronized
+    fun installGlobal(host: android.content.Context, g: GuestRuntime.Guest) {
+        try {
+            install(host.packageManager, g)
+            val at = Class.forName("android.app.ActivityThread")
+            val sf = at.getDeclaredField("sPackageManager")
+            sf.isAccessible = true
+            val cur = sf.get(null)
+            if (cur != null && !Proxy.isProxyClass(cur.javaClass)) {
+                val iface = Class.forName("android.content.pm.IPackageManager")
+                sf.set(null, Proxy.newProxyInstance(iface.classLoader, arrayOf(iface), Hook(cur, g, host.packageManager)))
+                Log.i(TAG, "package manager hook installed for every package manager of this process")
+            }
+        } catch (t: Throwable) { Log.w(TAG, "global package manager hook failed: $t") }
+        try {
+            val c = Class.forName("android.app.ApplicationPackageManager")
+            c.getDeclaredMethod("invalidateApplicationInfoCache").also { it.isAccessible = true }.invoke(null)
+        } catch (t: Throwable) {
+            try { PackageManager::class.java.getDeclaredMethod("invalidatePackageInfoCache").invoke(null) } catch (t2: Throwable) { }
+        }
+    }
+
     @Synchronized
     fun install(pm: PackageManager, g: GuestRuntime.Guest) {
         if (!hooked.add(pm)) return

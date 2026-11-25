@@ -198,6 +198,7 @@ object GuestRuntime {
         setProcessName(g)
         // Android builds the Application object (and attaches its context) first, then starts the providers, then calls
         // Application.onCreate. Providers such as androidx.startup read resources through getApplicationContext().
+        GuestPm.installGlobal(app, g)
         createGameApplication(app, g)
         startProviders(app, g)
         startGameApplication(g)
