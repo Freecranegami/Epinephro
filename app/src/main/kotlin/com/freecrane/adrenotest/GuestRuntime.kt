@@ -196,8 +196,11 @@ object GuestRuntime {
         val g = Guest(pkg, id, apk, ai, res, loader, File(root, "obb").apply { mkdirs() })
         current = g
         setProcessName(g)
+        // Android builds the Application object (and attaches its context) first, then starts the providers, then calls
+        // Application.onCreate. Providers such as androidx.startup read resources through getApplicationContext().
+        createGameApplication(app, g)
         startProviders(app, g)
-        startGameApplication(app, g)
+        startGameApplication(g)
         return g
     }
 
@@ -263,19 +266,28 @@ object GuestRuntime {
 
     // Android starts the app's Application before any of its activities. Games keep
     // state there (and in statics it sets), so start the game's own one the same way.
-    private fun startGameApplication(host: Context, g: Guest) {
+    private fun createGameApplication(host: Context, g: Guest) {
         val name = g.ai.className
-        if (name.isNullOrEmpty() || name == "android.app.Application") {
-            Log.i(TAG, "game has no Application class of its own")
-            return
-        }
-        Log.i(TAG, "starting the game's Application: $name")
+        val own = !(name.isNullOrEmpty() || name == "android.app.Application")
         try {
-            val a = g.loader.loadClass(name).getDeclaredConstructor().newInstance() as Application
+            val a = if (own) g.loader.loadClass(name).getDeclaredConstructor().newInstance() as Application else Application()
             val attach = ContextWrapper::class.java.getDeclaredMethod("attachBaseContext", Context::class.java)
             attach.isAccessible = true
             attach.invoke(a, GuestContext(host, g))
             g.app = a
+            Log.i(TAG, if (own) "game Application created: $name" else "game has no Application class of its own: plain one created")
+        } catch (t: Throwable) {
+            Log.e(TAG, "the game's Application could not be created", t)
+            if (own) throw t
+        }
+    }
+
+    private fun startGameApplication(g: Guest) {
+        val a = g.app ?: return
+        val name = g.ai.className
+        if (name.isNullOrEmpty() || name == "android.app.Application") return
+        Log.i(TAG, "starting the game's Application: $name")
+        try {
             a.onCreate()
             Log.i(TAG, "game Application started")
         } catch (t: Throwable) {
