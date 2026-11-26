@@ -101,6 +101,35 @@ object GuestLog {
 
     fun read(ctx: Context): String = readLog(ctx) + "\n" + exitInfo(ctx)
 
+    // /storage/emulated/0/Epinephro/logs/latestguestlog.txt: the newest guest log, overwritten every time a log is made
+    fun logDir(): File = File(android.os.Environment.getExternalStorageDirectory(), "Epinephro/logs")
+    fun logFile(): File = File(logDir(), "latestguestlog.txt")
+    fun ensureFolder(): Boolean = try { logDir().let { it.isDirectory || it.mkdirs() } } catch (t: Throwable) { false }
+
+    fun save(text: String): Boolean = try {
+        if (!ensureFolder()) false else {
+            val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+            val tmp = File(logDir(), "latestguestlog.tmp")
+            tmp.writeText("[saved $stamp]\n$text")
+            if (!tmp.renameTo(logFile())) { logFile().writeText(tmp.readText()); tmp.delete() }
+            true
+        }
+    } catch (t: Throwable) { false }
+
+    // withExit = false in the game process (the exit record there is the previous run's, and it is cheaper)
+    fun saveLatest(ctx: Context, withExit: Boolean = true): Boolean = save(if (withExit) read(ctx) else readLog(ctx))
+
+    // the app's own screen: save when the game's raw log is newer than the saved one
+    fun saveIfNewer(ctx: Context) {
+        try {
+            val raw = GuestLogFile.file(ctx)
+            if (!raw.exists() || raw.length() == 0L) return
+            val out = logFile()
+            if (out.exists() && out.lastModified() >= raw.lastModified()) return
+            saveLatest(ctx, true)
+        } catch (t: Throwable) { }
+    }
+
     private fun readLog(ctx: Context): String {
         val saved = GuestLogFile.file(ctx)
         val fromFile = try {
@@ -201,7 +230,9 @@ object GuestLog {
             activity.runOnUiThread {
                 val cm = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("game log", text))
-                out.text = "Copied ${text.length} characters of the game log. " +
+                val saved = save(text)
+                out.text = "Copied ${text.length} characters of the game log" +
+                    (if (saved) " and saved it to Epinephro/logs/latestguestlog.txt on the phone's storage" else " (could not save the file: allow storage access for Epinephro)") + ". " +
                     "Preview of the end:\n\n" + text.takeLast(1500)
             }
         }.start()

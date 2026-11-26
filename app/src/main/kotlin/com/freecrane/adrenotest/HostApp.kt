@@ -65,7 +65,13 @@ class HostApp : Application() {
         super.onCreate()
         instance = this
         if (inGuestProcess()) {
-            if (!Tweaks.light(this)) GuestLogFile.start(this)   // light mode: no log capture to a file
+            if (!Tweaks.light(this)) {
+                GuestLogFile.start(this)   // light mode: no log capture to a file
+                // the newest log is also kept on the phone's storage (Epinephro/logs/latestguestlog.txt): 30 s after the start, then every 2 minutes
+                Thread {
+                    try { Thread.sleep(30_000); while (true) { GuestLog.saveLatest(this, false); Thread.sleep(120_000) } } catch (t: Throwable) { }
+                }.also { it.isDaemon = true; it.name = "las-logsave"; it.priority = Thread.MIN_PRIORITY }.start()
+            }
             HiddenApi.exemptAll()
             MainGuard.install()
             // this app targets API 28: sharing a file:// URI would kill the game with FileUriExposedException. A real install of an old game would not.
@@ -121,7 +127,12 @@ private object GuestSwap : Application.ActivityLifecycleCallbacks {
             })
         } catch (t: Throwable) { Log.w("GuestHost", "focus watch failed: $t") }
     }
-    override fun onActivityPaused(activity: Activity) { PerfOverlay.detach(activity); life("PAUSED", activity) }
+    override fun onActivityPaused(activity: Activity) {
+        PerfOverlay.detach(activity); life("PAUSED", activity)
+        // leaving the game (or a crash dialog) is the time the log is wanted: save it now
+        if (activity.javaClass.classLoader is GuestLoader && !Tweaks.light(activity))
+            Thread { try { GuestLog.saveLatest(activity.applicationContext ?: activity, false) } catch (t: Throwable) { } }.also { it.isDaemon = true; it.priority = Thread.MIN_PRIORITY }.start()
+    }
     override fun onActivityStopped(activity: Activity) = life("STOPPED", activity)
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
     override fun onActivityDestroyed(activity: Activity) { PadOverlay.detach(activity); PerfOverlay.detach(activity); life("DESTROYED", activity) }

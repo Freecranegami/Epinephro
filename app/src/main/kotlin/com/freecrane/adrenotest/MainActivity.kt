@@ -1592,12 +1592,28 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::content.isInitialized) refreshPage()
+        Thread { GuestLog.saveIfNewer(applicationContext) }.also { it.isDaemon = true }.start()
+    }
+
+    // the Epinephro/logs folder on the phone's storage: asked for once, created as soon as storage access is granted
+    private fun prepareLogFolder() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE, android.Manifest.permission.READ_EXTERNAL_STORAGE), 4711)
+            else Thread { GuestLog.ensureFolder() }.start()
+        } catch (t: Throwable) { }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 4711) Thread { if (GuestLog.ensureFolder()) GuestLog.saveIfNewer(applicationContext) }.start()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Theme.load(this)
         setTheme(Theme.styleRes())          // dialogs, edit fields and the like follow the dark or light mode
         super.onCreate(savedInstanceState)
+        prepareLogFolder()
         try { actionBar?.hide() } catch (t: Throwable) { }
         window.statusBarColor = cBar
         window.navigationBarColor = cBg
