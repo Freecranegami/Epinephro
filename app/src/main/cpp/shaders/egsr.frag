@@ -96,7 +96,7 @@ void main() {
     }
     }
     }
-    if (q1.z > 0.0) {   // LumaSharpen-style texture sharpening, weaker the more the pixel is an edge
+    if (q1.z > 0.0 && a < 1.0) {   // LumaSharpen-style texture sharpening, weaker the more the pixel is an edge (a full edge gets none: its four reads are skipped)
         highp vec2 o = pc.t2.xy;
         vec3 t0 = textureLod(ps0, uv + vec2(o.x, -o.y), 0.0).xyz, t1 = textureLod(ps0, uv + vec2(-o.x, o.y), 0.0).xyz;
         vec3 t2 = textureLod(ps0, uv - o, 0.0).xyz, t3 = textureLod(ps0, uv + o, 0.0).xyz;

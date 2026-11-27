@@ -97,7 +97,7 @@ void main() {
     }
     }
     }
-    if (q1.z > 0.0 && rngG > q2z) {   // CAS: 4 bilinear reads one output pixel away; flat pixels (range from the gate's own reads below the floor) skip them
+    if (q1.z > 0.0 && a < 1.0 && rngG > q2z) {   // CAS: 4 bilinear reads one output pixel away; flat pixels (range from the gate's own reads below the floor) skip them
         highp vec2 o = pc.t2.xy;
         vec3 n = textureLod(ps0, uv - vec2(0.0, o.y), 0.0).xyz, w = textureLod(ps0, uv - vec2(o.x, 0.0), 0.0).xyz;
         vec3 e = textureLod(ps0, uv + vec2(o.x, 0.0), 0.0).xyz, s = textureLod(ps0, uv + vec2(0.0, o.y), 0.0).xyz;
