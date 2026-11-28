@@ -329,14 +329,18 @@ static VkFormat hdr_pick_format(VkPhysicalDevice phys, VkSurfaceKHR surf) {
     return pick;
 }
 
-int vkshim_sgsr_enabled(void) {
+static int sgsr_core_enabled(void) {
     static int s = -1;
     if (s < 0) {
         const char *e = getenv("LAS_SGSR"), *f = getenv("LAS_FSR"), *k = getenv("LAS_KEEP"), *w = getenv("LAS_RES_W");
         s = ((e && *e >= '1' && *e <= '7') ||   /* every upscaler (SGSR, SGSR Quality, MWSR, EGSR), at native resolution too */
               (f && *f == '1') || (k && *k == '1' && w && atoi(w) > 0)) ? 1 : 0;
     }
-    return s || vkshim_lsfg_wanted() || epi_wanted() || hdr_wanted();
+    return s;
+}
+
+int vkshim_sgsr_enabled(void) {
+    return sgsr_core_enabled() || vkshim_lsfg_wanted() || epi_wanted() || hdr_wanted();
 }
 
 /* 1 = SGSR, 2 = FSR 1, 3 = plain scaling (only used to keep the picture's ratio when no upscaler is chosen) */
@@ -953,7 +957,15 @@ int vkshim_sgsr_create(long device, long pci, long palloc, long psc, sg_f8 real,
     int wantLg = vkshim_lsfg_wanted() && lg_load();           /* frame generation needs our own swapchain whatever the sizes */
     int wantEpi = epi_wanted();                               /* so do the effects */
     int wantHdr = 0; VkFormat hfmt = 0;
-    if (!why && hdr_wanted()) {
+    /* A game that asks for an HDR colour space itself (HDR10, scRGB, ...) already draws in HDR: the picture is passed on untouched, with no
+     * conversion pass. VK_COLOR_SPACE_SRGB_NONLINEAR_KHR is 0, so anything else is the game's own HDR. When nothing else (upscaler, frame generation,
+     * effects) needs our swapchain, the game's swapchain is left completely alone. */
+    const int gameHdr = hdr_wanted() && (int)ci.imageColorSpace != 0;
+    if (gameHdr) {
+        LOGI("hdr: the game outputs HDR itself (colour space %d, format %d): no conversion pass", (int)ci.imageColorSpace, (int)ci.imageFormat);
+        if (!why && !sgsr_core_enabled() && !wantLg && !wantEpi) why = "the game outputs HDR itself, nothing to add";
+    }
+    if (!why && hdr_wanted() && !gameHdr) {
         hfmt = hdr_pick_format(phys, ci.surface); wantHdr = hfmt != 0;
         if (wantHdr && wantEpi) { LOGI("hdr: EpiShaders effects are off while HDR is on"); wantEpi = 0; }
     }

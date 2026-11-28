@@ -485,7 +485,7 @@ class MainActivity : Activity() {
         }
         val on = !Tweaks.hdr(this)
         Tweaks.setHdr(this, on)
-        out.text = if (on) "HDR10 output ON (screen peak ${if (screen > 0) "$screen nits" else "not reported, 600 assumed"}). The game's picture is expanded to HDR10: highlights get brighter, colours use the wide gamut. It works on any game but is a guess, not the game's own HDR. It adds one full-screen pass. The Guest log says `hdr: on` or why not (Light mode OFF to see it). Applies the next time the game starts."
+        out.text = if (on) "HDR10 output ON (screen peak ${if (screen > 0) "$screen nits" else "not reported, 600 assumed"}). A game that has its own HDR output is passed through untouched, with no extra pass. Any other game gets its picture expanded to HDR10 (brighter highlights, wide gamut) by one light full-screen pass: that is a guess, not real HDR. The Guest log says whether the game outputs HDR itself (Light mode OFF to see it). Applies the next time the game starts."
                    else "HDR10 output OFF. Applies the next time the game starts."
     }
 
@@ -982,7 +982,7 @@ class MainActivity : Activity() {
         action(b, "EGSR look", "Natural, Crisp (FSR 1 sharpness) or Punchy") { chooseEpiSr2Look(outView) }
         action(b, "EGSR tuning", "boost, limit, edge, compare split") { chooseEpiSr2(outView) }
         action(b, ad("Variable-rate shading (experimental)"), Tweaks.vrsModes[Tweaks.vrs(this)]) { chooseVrs() }
-        toggle(b, "HDR10 output (experimental)", "Expands the game's picture to HDR10 on an HDR screen: brighter highlights, wider colours. Works on any game", { Tweaks.hdr(this) }) { toggleHdr(outView) }
+        toggle(b, "HDR10 output (experimental)", "Games with their own HDR output are passed through as they are. Other games get a light expansion to HDR10: brighter highlights, wider colours", { Tweaks.hdr(this) }) { toggleHdr(outView) }
         action(b, "HDR paper white", "${Tweaks.hdrWhite(this)} nits") { chooseHdrWhite() }
         action(b, "HDR highlight boost", if (Tweaks.hdrBoost(this) == 0) "Off" else "${Tweaks.hdrBoost(this)} %") { chooseHdrBoost() }
         action(b, "Frame pacing", if (Tweaks.pace(this) == 0) "Off" else "${Tweaks.pace(this)} fps, evenly spaced") { choosePace() }

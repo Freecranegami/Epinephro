@@ -13,7 +13,8 @@ object Tweaks {
     fun light(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("light_mode", true)   // on by default: diagnostics cost CPU on every call
     fun setLight(ctx: Context, on: Boolean) { Prefs.get(ctx).edit().putBoolean("light_mode", on).commit() }
     fun depthDiag(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("depth_diag", false)
-    // HDR10 output: the shim turns the game's SDR picture into HDR10 (brighter highlights, wider colours) on an HDR screen.
+    // HDR10 output: a game that outputs HDR itself is passed through untouched; any other game's SDR picture is expanded to HDR10 (brighter highlights,
+    // wider colours) by one light pass, on an HDR screen.
     fun hdr(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("hdr10", false)
     fun setHdr(ctx: Context, on: Boolean) = Prefs.get(ctx).edit().putBoolean("hdr10", on).apply()
     val hdrWhites = intArrayOf(120, 160, 200, 250, 300)
