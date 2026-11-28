@@ -6,3 +6,4 @@ local.properties
 # prepared by tools/angle_fetch.py in CI
 app/src/main/jniLibs/
 build/angle-work/
+__pycache__/
