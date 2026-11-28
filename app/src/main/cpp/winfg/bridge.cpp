@@ -170,6 +170,7 @@ EXPORT int las_lsfg_init(void *gipa, void *instance, void *phys, void *dev, uint
         c.multiplier = 2;
         c.pacing = false;
         c.debug = false;
+        if ((e = std::getenv("LAS_WFG_UILOCK")) && *e) c.uiLock = static_cast<float>(std::atof(e));   // 8-bit levels, 0 = off
         if ((e = std::getenv("LAS_WFG_HUD")) && *e) {
             float v[4];
             if (std::sscanf(e, "%f,%f,%f,%f", &v[0], &v[1], &v[2], &v[3]) == 4 && v[0] < v[2] && v[1] < v[3]) {
@@ -181,8 +182,8 @@ EXPORT int las_lsfg_init(void *gipa, void *instance, void *phys, void *dev, uint
         if (!g_fg.init(&g_dd, &g_id, g_phys, g_dev, qfam, g_queue)) { setErr(err, errlen, "the engine could not start"); return -1; }
         g_fg.configure(c);
         g_ready = true;
-        LOG("winfg: engine ready (%s, flow detail %d, camera correction %d%s)", c.model == 3 ? "optical flow" : "bidirectional",
-            c.perfPreset, c.gmMode, g_hasHud ? ", HUD box set" : "");
+        LOG("winfg: engine ready (%s, flow detail %d, camera correction %d, UI lock %.1f levels%s)", c.model == 3 ? "optical flow" : "bidirectional",
+            c.perfPreset, c.gmMode, c.uiLock, g_hasHud ? ", HUD box set" : "");
         return 0;
     } catch (const std::exception &e) {
         setErr(err, errlen, e.what());

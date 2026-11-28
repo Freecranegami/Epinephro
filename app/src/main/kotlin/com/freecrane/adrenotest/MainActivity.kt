@@ -805,6 +805,7 @@ class MainActivity : Activity() {
         val method = group(Tweaks.wfgMethods, Tweaks.wfgMethod(ctx), 300)
         val preset = group(Tweaks.wfgPresets, Tweaks.wfgPreset(ctx), 310)
         val gm = group(Tweaks.wfgGms, Tweaks.wfgGm(ctx), 320)
+        val lock = group(Tweaks.wfgLocks, Tweaks.wfgLock(ctx), 330)
         val hud = Tweaks.wfgHud(ctx).split(',').map { it.trim() }.let { if (it.size == 4) it else listOf("", "", "", "") }
         fun num(hint: String, v: String) = android.widget.EditText(ctx).apply {
             this.hint = hint; setText(v); inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -822,6 +823,7 @@ class MainActivity : Activity() {
             addView(title("Method")); addView(method)
             addView(title("Flow detail")); addView(preset)
             addView(title("Camera-motion correction")); addView(gm)
+            addView(title("Automatic UI lock")); addView(lock)
             addView(title("HUD exclusion box")); addView(row); addView(note)
         }
         MaterialAlertDialogBuilder(this)
@@ -834,6 +836,7 @@ class MainActivity : Activity() {
                     val f = v.map { it!!.coerceIn(0f, 100f) }
                     if (f[0] < f[2] && f[1] < f[3]) h = f.joinToString(",") { "%.1f".format(java.util.Locale.US, it) }
                 }
+                Tweaks.setWfgLock(this, lock.checkedRadioButtonId - 330)
                 Tweaks.setWfg(this, method.checkedRadioButtonId - 300, preset.checkedRadioButtonId - 310, gm.checkedRadioButtonId - 320, h)
                 out.text = "Win-FG: ${Tweaks.fgDescribe(this).removePrefix("Win-FG, ")}. Applies the next time the game starts."
                 refreshPage()

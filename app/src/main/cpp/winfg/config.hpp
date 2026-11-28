@@ -109,6 +109,9 @@ struct Config {
     // Sourced from WIN_FG_HUD_RECT="x0,y0,x1,y1" env var or conf.toml
     // (hudRect="x0,y0,x1,y1"). Pattern is Isygold's Vegas DXVK framegen —
     // host knows where the HUD is, tell the shader to skip it.
+    // AUTOMATIC UI LOCK: in-between pixels that are identical (within this many 8-bit levels) in both real frames are copied from the current
+    // frame, so static HUD / text / icons are never warped. 0 = off. LAS_WFG_UILOCK (levels).
+    float    uiLock      = 2.0f;
     float    hudX0       = 0.0f;
     float    hudY0       = 0.0f;
     float    hudX1       = 0.0f;
@@ -158,6 +161,7 @@ struct Config {
         if (frEps < 1e-3f) frEps = 1e-3f;
         if (flowScale < 0.05f) flowScale = 0.05f; if (flowScale > 4.0f) flowScale = 4.0f;
         if (beta < 0.0f) beta = 0.0f; if (lambda < 0.0f) lambda = 0.0f;
+        if (uiLock < 0.0f) uiLock = 0.0f; if (uiLock > 16.0f) uiLock = 16.0f;
         // capture knobs
         if (captureW < 16) captureW = 16; if (captureW > 7680) captureW = 7680;
         if (captureH < 16) captureH = 16; if (captureH > 4320) captureH = 4320;
@@ -325,7 +329,7 @@ static inline Config load_config() {
 // The vec4 hudRect is 16-byte aligned in std140, sits at offset 32 (after the
 // 8 leading floats which naturally occupy 32B). Disabled when hudX0>=hudX1.
 struct SynthUBO {
-    float flowScale, alpha, beta, lambda, epsilon, photoScale, pad0, pad1;
+    float flowScale, alpha, beta, lambda, epsilon, photoScale, uiLock, pad1;
     float hudX0, hudY0, hudX1, hudY1;
 };
 // UBO layout — MUST match of3_flow / of3_expand_m4 binding 0 (Model3UBO).

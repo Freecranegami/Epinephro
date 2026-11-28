@@ -213,13 +213,17 @@ object Tweaks {
     fun wfgPreset(ctx: Context): Int = Prefs.get(ctx).getInt("wfg_preset", 1).coerceIn(0, 2)
     fun wfgGm(ctx: Context): Int = Prefs.get(ctx).getInt("wfg_gm", 0).coerceIn(0, 2)
     // HUD box as percent of the picture: "left,top,right,bottom", or empty for none
+    // automatic UI lock: pixels that do not change between two real frames are copied, so HUD and text never ghost (0 off, 1 normal, 2 strong)
+    val wfgLocks = listOf("Off", "Normal (recommended)", "Strong (also locks pixels that change a little, for noisy or dithered HUDs)")
+    fun wfgLock(ctx: Context): Int = Prefs.get(ctx).getInt("wfg_uilock", 1).coerceIn(0, 2)
+    fun setWfgLock(ctx: Context, v: Int) { Prefs.get(ctx).edit().putInt("wfg_uilock", v.coerceIn(0, 2)).commit() }
     fun wfgHud(ctx: Context): String = Prefs.get(ctx).getString("wfg_hud", "") ?: ""
     fun setWfg(ctx: Context, method: Int, preset: Int, gm: Int, hud: String) {
         Prefs.get(ctx).edit().putInt("wfg_method", method.coerceIn(0, 1)).putInt("wfg_preset", preset.coerceIn(0, 2))
             .putInt("wfg_gm", gm.coerceIn(0, 2)).putString("wfg_hud", hud).commit()
     }
     fun fgDescribe(ctx: Context): String =
-        if (fgEngine(ctx) == 1) "Win-FG, ${if (wfgMethod(ctx) == 0) "optical flow" else "bidirectional"}, flow detail ${listOf("quality", "balanced", "performance")[wfgPreset(ctx)]}, camera correction ${listOf("auto", "on", "off")[wfgGm(ctx)]}${if (wfgHud(ctx).isNotEmpty()) ", HUD box ${wfgHud(ctx)}" else ""}"
+        if (fgEngine(ctx) == 1) "Win-FG, ${if (wfgMethod(ctx) == 0) "optical flow" else "bidirectional"}, flow detail ${listOf("quality", "balanced", "performance")[wfgPreset(ctx)]}, camera correction ${listOf("auto", "on", "off")[wfgGm(ctx)]}, UI lock ${listOf("off", "normal", "strong")[wfgLock(ctx)]}${if (wfgHud(ctx).isNotEmpty()) ", HUD box ${wfgHud(ctx)}" else ""}"
         else "Lossless Scaling, ${if (lsfgQuality(ctx)) "quality" else "performance"}, flow ${"%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05)}"
     fun fgReady(ctx: Context): Boolean = fgEngine(ctx) == 1 || Lsfg.installed(ctx)
     fun lsfgQuality(ctx: Context): Boolean = Prefs.get(ctx).getBoolean("lsfg_quality", false)
@@ -267,6 +271,7 @@ object Tweaks {
             Os.setenv("LAS_WFG_PRESET", wfgPreset(ctx).toString(), true)
             Os.setenv("LAS_WFG_GM", wfgGm(ctx).toString(), true)
             Os.setenv("LAS_WFG_HUD", wfgHud(ctx), true)
+            Os.setenv("LAS_WFG_UILOCK", listOf("0", "2", "5")[wfgLock(ctx)], true)
             Os.setenv("LAS_LSFG_FP16", if (lsfgHalf(ctx)) "1" else "0", true)
             Os.setenv("LAS_LSFG_PERF", if (lsfgQuality(ctx)) "0" else "1", true)
             Os.setenv("LAS_LSFG_FLOW", "%.2f".format(java.util.Locale.US, lsfgFlowSteps(ctx) * 0.05), true)
